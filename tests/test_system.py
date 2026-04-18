@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 from unittest.mock import patch
 
@@ -30,12 +31,162 @@ def test_root_route_is_reachable(client) -> None:
     assert "text/html" in resp.content_type
 
 
+def test_root_route_renders_req1_shell_landmarks(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    for marker in (
+        'id="app-shell"',
+        'id="app-header"',
+        'id="app-sidebar"',
+        'id="app-breadcrumb"',
+        'id="app-main"',
+        'id="app-footer"',
+        'id="app-input-panel"',
+        'id="app-control-panel"',
+        'id="app-output-panel"',
+        'id="app-history-panel"',
+    ):
+        assert marker in html
+
+
+def test_root_route_exposes_shell_navigation_and_header_controls(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    assert html.count('data-group-key=') == 6
+    assert html.count('data-nav-kind="recordings"') == 1
+    assert html.count('data-nav-kind="history"') == 1
+    assert 'id="header-settings-button"' in html
+    assert 'id="header-help-button"' in html
+    assert 'id="header-language-button"' in html
+    assert 'id="app-help-panel"' in html
+    assert 'id="app-settings-panel"' in html
+    assert '/api/bootstrap' in html
+
+
+def test_root_route_exposes_text_mode_controls(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    for marker in (
+        'id="text-mode-picker"',
+        'id="text-input"',
+        'id="text-upload-input"',
+        'accept=".txt,text/plain"',
+        'id="text-clear-button"',
+        'id="text-start-button"',
+        'id="text-reset-button"',
+        'id="text-save-button"',
+        'id="text-result"',
+        'id="text-copy-button"',
+        'id="text-download-link"',
+    ):
+        assert marker in html
+
+    assert '/api/conversions/text' in html
+    assert "/api/translate" not in html
+
+
+def test_root_route_exposes_speech_mode_controls(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    for marker in (
+        'id="speech-input-section"',
+        'id="speech-record-button"',
+        'id="speech-stop-button"',
+        'id="speech-upload-input"',
+        'accept=".wav,audio/wav"',
+        'id="speech-clear-button"',
+        'id="speech-preview-player"',
+        'id="speech-recordings-list"',
+        'id="result-source-audio-player"',
+    ):
+        assert marker in html
+
+    assert "/api/conversions/speech" in html
+    assert "/api/recordings" in html
+    assert "navigator.mediaDevices?.getUserMedia" in html
+
+
+def test_root_route_exposes_recording_reuse_mode_picker_contract(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    assert "const SPEECH_REUSE_MODE_KEYS = [" in html
+    for mode_key in (
+        "asr_zh_zh",
+        "asr_en_en",
+        "asr_mt_zh_en",
+        "asr_mt_en_zh",
+        "asr_mt_tts_zh_en",
+        "asr_mt_tts_en_zh",
+    ):
+        assert f"'{mode_key}'" in html
+
+    assert "state.pendingReuseRecording = {" in html
+    assert "getMessage('speech.use_recording')" in html
+    assert "getMessage('text.mode_picker')" in html
+    assert "formData.append('recording_id', String(state.speechInput.recordingId));" in html
+
+
+def test_root_route_exposes_history_ui_controls(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    for marker in (
+        'id="recent-history-list"',
+        'id="recent-history-count"',
+        'id="history-view-all-button"',
+        'id="history-export-link"',
+        'id="history-full-section"',
+        'id="history-refresh-button"',
+        'id="history-full-export-link"',
+        'id="history-full-list"',
+    ):
+        assert marker in html
+
+    assert "/api/history/recent" in html
+    assert "/api/history/export" in html
+    assert "method: 'DELETE'" in html
+
+
+def test_root_route_exposes_help_settings_and_locale_polish_controls(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    for marker in (
+        'id="help-panel-title"',
+        'id="help-panel-list"',
+        'id="settings-panel-title"',
+        'id="settings-locale-zh"',
+        'id="settings-locale-en"',
+        'id="settings-current-view"',
+        'id="settings-constraints-list"',
+        'data-i18n-attr="aria-label:a11y.primary_navigation"',
+        'data-i18n-attr="aria-label:a11y.breadcrumb"',
+        'data-i18n-attr="aria-label:a11y.current_mode_summary"',
+        'data-i18n-attr="aria-label:a11y.mode_picker"',
+    ):
+        assert marker in html
+
+
 def test_bootstrap_route_is_reachable(client) -> None:
     resp = client.get("/api/bootstrap")
 
     assert resp.status_code == 200
     data = resp.get_json()
     assert set(data.keys()) == {"app", "constraints", "modes", "i18n"}
+
+
+def test_legacy_record_route_is_not_registered(app, client) -> None:
+    rules = {rule.rule for rule in app.url_map.iter_rules()}
+
+    assert "/api/record" not in rules
+
+    resp = client.post("/api/record")
+    assert resp.status_code == 404
 
 
 def test_main_defaults_to_server_mode(mock_config) -> None:
@@ -75,3 +226,23 @@ def test_main_server_flag_remains_explicitly_supported(mock_config) -> None:
 
     run_server.assert_called_once_with(mock_config)
     run_cli.assert_not_called()
+
+
+def test_test_suite_does_not_depend_on_legacy_translate_endpoint_or_numeric_mode_key() -> None:
+    legacy_translate = "/api/" + "translate"
+    legacy_numeric_mode_key = "mode" + "_id"
+    allowed_negative_assertion = f'assert "{legacy_translate}" not in html'
+    current_file = Path(__file__)
+
+    for path in Path("tests").glob("test_*.py"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        translate_lines = [line.strip() for line in lines if legacy_translate in line]
+        numeric_mode_lines = [line.strip() for line in lines if legacy_numeric_mode_key in line]
+
+        if path.resolve() == current_file.resolve():
+            assert translate_lines == [allowed_negative_assertion]
+            assert numeric_mode_lines == []
+            continue
+
+        assert translate_lines == [], f"legacy endpoint dependency found in {path}"
+        assert numeric_mode_lines == [], f"legacy numeric-mode dependency found in {path}"

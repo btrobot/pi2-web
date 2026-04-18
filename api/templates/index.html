@@ -1,659 +1,2400 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pi5 离线翻译系统</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Req1 BS UI</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: light;
+      --bg: #f3f5f8;
+      --surface: #ffffff;
+      --surface-muted: #eef2f7;
+      --border: #d7dfeb;
+      --text: #122033;
+      --text-soft: #5c6c82;
+      --accent: #2f6feb;
+      --accent-soft: #dbe8ff;
+      --success: #1f8f4d;
+      --warning: #b87211;
+      --danger: #c83a31;
+      --shadow: 0 12px 30px rgba(12, 29, 55, 0.08);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f0f2f5;
-      color: #1a1a1a;
+      margin: 0;
       min-height: 100vh;
+      font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 18%, var(--bg) 100%);
+      color: var(--text);
     }
 
-    header {
-      background: #1677ff;
-      color: #fff;
-      padding: 14px 20px;
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .app-header,
+    .app-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      gap: 16px;
+      padding: 18px 28px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(215, 223, 235, 0.9);
     }
 
-    header h1 { font-size: 1.1rem; font-weight: 600; }
-
-    #status-badge {
-      font-size: .75rem;
-      padding: 3px 10px;
-      border-radius: 12px;
-      background: rgba(255,255,255,.2);
+    .app-footer {
+      border-bottom: none;
+      border-top: 1px solid rgba(215, 223, 235, 0.9);
+      color: var(--text-soft);
+      font-size: 0.95rem;
+      flex-wrap: wrap;
     }
 
-    main {
-      max-width: 860px;
-      margin: 0 auto;
-      padding: 20px 16px 40px;
+    .brand {
       display: flex;
-      flex-direction: column;
-      gap: 20px;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
     }
 
-    /* ── Card ── */
-    .card {
-      background: #fff;
-      border-radius: 10px;
-      padding: 18px 20px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.08);
-    }
-
-    .card h2 {
-      font-size: .95rem;
-      font-weight: 600;
-      color: #555;
-      margin-bottom: 14px;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-
-    /* ── Translate buttons ── */
-    .mode-grid {
+    .brand-logo {
+      width: 46px;
+      height: 46px;
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-
-    .btn-mode {
-      padding: 14px 10px;
-      border: 1.5px solid #d9d9d9;
-      border-radius: 8px;
-      background: #fafafa;
-      cursor: pointer;
-      font-size: .9rem;
-      font-weight: 500;
-      transition: background .15s, border-color .15s, color .15s;
-      text-align: center;
-      line-height: 1.4;
-    }
-
-    .btn-mode:hover { background: #e6f4ff; border-color: #1677ff; color: #1677ff; }
-    .btn-mode:active { background: #bae0ff; }
-    .btn-mode:disabled { opacity: .5; cursor: not-allowed; }
-
-    .btn-mode .mode-label { font-size: .75rem; color: #888; display: block; margin-top: 2px; }
-
-    /* ── Text input area ── */
-    #translate-input {
-      width: 100%;
-      min-height: 80px;
-      border: 1.5px solid #d9d9d9;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: .9rem;
-      resize: vertical;
-      margin-bottom: 10px;
-      font-family: inherit;
-      transition: border-color .15s;
-    }
-
-    #translate-input:focus { outline: none; border-color: #1677ff; }
-
-    /* ── Result box ── */
-    #translate-result {
-      min-height: 48px;
-      background: #f6ffed;
-      border: 1px solid #b7eb8f;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: .9rem;
-      color: #389e0d;
-      white-space: pre-wrap;
-      word-break: break-word;
-      display: none;
-    }
-
-    #translate-result.error {
-      background: #fff2f0;
-      border-color: #ffccc7;
-      color: #cf1322;
-    }
-
-    /* ── Record button ── */
-    #btn-record {
-      width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 8px;
-      background: #ff4d4f;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), #7a5cff);
       color: #fff;
       font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background .15s, transform .1s;
+      font-weight: 700;
+      box-shadow: var(--shadow);
+      flex: none;
     }
 
-    #btn-record:hover { background: #ff7875; }
-    #btn-record:active { transform: scale(.98); }
-    #btn-record:disabled { background: #d9d9d9; cursor: not-allowed; }
+    .brand-meta { min-width: 0; }
 
-    #record-status {
-      margin-top: 10px;
-      font-size: .85rem;
-      color: #888;
-      text-align: center;
-      min-height: 20px;
+    .brand-kicker {
+      margin: 0 0 4px;
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-soft);
     }
 
-    /* ── Lists ── */
-    .list-empty {
-      text-align: center;
-      color: #bbb;
-      padding: 20px 0;
-      font-size: .9rem;
-    }
-
-    .list-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 0;
-      border-bottom: 1px solid #f0f0f0;
-      gap: 10px;
-    }
-
-    .list-item:last-child { border-bottom: none; }
-
-    .list-item-info { flex: 1; min-width: 0; }
-    .list-item-info .item-title {
-      font-size: .9rem;
-      font-weight: 500;
+    .brand-title {
+      margin: 0;
+      font-size: clamp(1.15rem, 2vw, 1.5rem);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .list-item-info .item-meta {
-      font-size: .78rem;
-      color: #888;
-      margin-top: 2px;
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
-    .btn-dl {
-      flex-shrink: 0;
-      padding: 5px 12px;
-      border: 1px solid #1677ff;
-      border-radius: 6px;
-      background: transparent;
-      color: #1677ff;
-      font-size: .82rem;
+    .ghost-button,
+    .nav-button,
+    .mode-pill,
+    .primary-button,
+    .secondary-button,
+    .link-button,
+    .file-button span,
+    .recording-action {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
       cursor: pointer;
-      transition: background .15s, color .15s;
-      white-space: nowrap;
+      transition: 0.2s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
 
-    .btn-dl:hover { background: #1677ff; color: #fff; }
-
-    /* ── Export row ── */
-    .export-row {
-      margin-top: 12px;
-      text-align: right;
+    .ghost-button:hover,
+    .nav-button:hover,
+    .mode-pill:hover,
+    .primary-button:hover,
+    .secondary-button:hover,
+    .link-button:hover,
+    .file-button span:hover,
+    .recording-action:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-1px);
     }
 
-    .btn-export {
-      padding: 6px 16px;
-      border: 1px solid #d9d9d9;
-      border-radius: 6px;
-      background: #fafafa;
-      font-size: .85rem;
-      cursor: pointer;
-      transition: background .15s;
-    }
-
-    .btn-export:hover { background: #e6f4ff; border-color: #1677ff; color: #1677ff; }
-
-    /* ── System status ── */
-    #system-status {
-      font-size: .85rem;
-      color: #555;
-      line-height: 1.8;
-    }
-
-    .status-ok { color: #52c41a; font-weight: 600; }
-    .status-err { color: #ff4d4f; font-weight: 600; }
-
-    /* ── Spinner ── */
-    .spinner {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid #d9d9d9;
-      border-top-color: #1677ff;
-      border-radius: 50%;
-      animation: spin .6s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Toast ── */
-    #toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: #333;
+    .primary-button {
+      background: var(--accent);
+      border-color: var(--accent);
       color: #fff;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: .88rem;
+      font-weight: 600;
+    }
+
+    .primary-button:hover {
+      color: #fff;
+      filter: brightness(1.05);
+    }
+
+    .shell-body {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 24px;
+      padding: 24px 28px 28px;
+      min-height: 0;
+    }
+
+    .app-sidebar {
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(215, 223, 235, 0.95);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .nav-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-button {
+      width: 100%;
+      justify-content: space-between;
+      text-align: left;
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+
+    .ghost-button.is-active,
+    .nav-button.is-active,
+    .mode-pill.is-active,
+    .secondary-button.is-active,
+    .recording-action.is-active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(47, 111, 235, 0.18);
+    }
+
+    .nav-count,
+    .meta-pill,
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 32px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      background: var(--surface-muted);
+      color: var(--text-soft);
+    }
+
+    .app-content {
+      min-width: 0;
+      display: grid;
+      gap: 18px;
+      min-height: 0;
+    }
+
+    .app-breadcrumb,
+    .summary-card,
+    .shell-card {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(215, 223, 235, 0.95);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .app-breadcrumb {
+      padding: 16px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .breadcrumb-label {
+      font-weight: 600;
+      color: var(--text-soft);
+    }
+
+    .breadcrumb-path {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .breadcrumb-path li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .breadcrumb-path li + li::before {
+      content: ">";
+      color: var(--text-soft);
+    }
+
+    .shell-main {
+      display: grid;
+      gap: 18px;
+    }
+
+    .summary-card,
+    .shell-card {
+      padding: 18px 20px;
+    }
+
+    .summary-top,
+    .shell-card-head,
+    .section-row,
+    .status-row,
+    .recording-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .summary-mode {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+
+    .summary-caption,
+    .section-caption,
+    .field-label,
+    .status-note,
+    .result-empty,
+    .result-label,
+    .history-placeholder,
+    .recording-meta,
+    .recording-empty {
+      color: var(--text-soft);
+      font-size: 0.94rem;
+      line-height: 1.5;
+    }
+
+    .summary-caption,
+    .section-caption,
+    .recording-meta,
+    .recording-empty {
+      margin: 6px 0 0;
+    }
+
+    .summary-meta,
+    .button-row,
+    .inline-row,
+    .mode-picker,
+    .recording-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .shell-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .shell-card {
+      min-height: 220px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .shell-card-title,
+    .recording-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .meta-pill { font-weight: 600; }
+
+    .field-label {
+      margin: 0;
+      font-weight: 600;
+    }
+
+    .panel-stack,
+    .recording-list,
+    .result-stack,
+    .result-block {
+      display: grid;
+      gap: 14px;
+    }
+
+    .text-input {
+      width: 100%;
+      min-height: 188px;
+      resize: vertical;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: #fbfcfe;
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    .text-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.16);
+    }
+
+    .text-input:disabled {
+      background: #f2f5fa;
+      color: var(--text-soft);
+      cursor: not-allowed;
+    }
+
+    .file-button {
+      position: relative;
+      overflow: hidden;
+      display: inline-flex;
+    }
+
+    .file-button input {
+      position: absolute;
+      inset: 0;
       opacity: 0;
-      transition: opacity .25s, transform .25s;
+      cursor: pointer;
+    }
+
+    .button-row button:disabled,
+    .button-row a[aria-disabled="true"],
+    .file-button.is-disabled span,
+    .recording-action:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
       pointer-events: none;
-      z-index: 999;
-      max-width: 90vw;
-      text-align: center;
     }
 
-    #toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
+    .status-note,
+    .recording-card,
+    .result-text,
+    .result-empty {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--surface-muted);
     }
 
-    /* ── Responsive ── */
-    @media (max-width: 480px) {
-      .mode-grid { grid-template-columns: 1fr; }
-      header h1 { font-size: 1rem; }
+    .recording-card,
+    .result-text,
+    .result-empty {
+      background: #fbfcfe;
+      border: 1px solid var(--border);
+    }
+
+    .status-note.is-processing {
+      color: var(--warning);
+      background: rgba(184, 114, 17, 0.11);
+    }
+
+    .status-note.is-error {
+      color: var(--danger);
+      background: rgba(200, 58, 49, 0.11);
+    }
+
+    .status-note.is-ready {
+      color: var(--success);
+      background: rgba(31, 143, 77, 0.11);
+    }
+
+    .result-empty {
+      border-style: dashed;
+    }
+
+    .result-label {
+      margin: 0;
+      font-weight: 600;
+    }
+
+    .result-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 54px;
+    }
+
+    .result-audio,
+    .recording-audio {
+      width: 100%;
+    }
+
+    .recording-card {
+      gap: 10px;
+    }
+
+    .recording-actions {
+      justify-content: flex-start;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: var(--border);
+      border-radius: 999px;
+    }
+
+    .status-pill {
+      background: rgba(31, 143, 77, 0.12);
+      color: var(--success);
+      min-width: auto;
+      gap: 8px;
+    }
+
+    .status-pill.is-error,
+    .footer-status.is-error {
+      background: rgba(200, 58, 49, 0.12);
+      color: var(--danger);
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .footer-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(31, 143, 77, 0.08);
+      color: var(--success);
+    }
+
+    .history-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .history-card,
+    .history-item {
+      background: #fbfcfe;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .history-item summary {
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .history-item summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .history-head,
+    .history-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .history-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .history-meta,
+    .history-preview {
+      margin: 4px 0 0;
+      color: var(--text-soft);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .history-preview strong {
+      color: var(--text);
+    }
+
+    .history-body {
+      display: grid;
+      gap: 12px;
+    }
+
+    .history-actions,
+    .history-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .history-audio-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .history-section {
+      display: grid;
+      gap: 16px;
+    }
+
+    .utility-grid {
+      align-items: start;
+    }
+
+    .utility-card {
+      min-height: 0;
+    }
+
+    .help-list,
+    .settings-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .help-item,
+    .settings-item {
+      margin: 0;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: #fbfcfe;
+    }
+
+    .help-item-title,
+    .settings-item-title {
+      margin: 0 0 6px;
+      font-size: 0.96rem;
+      font-weight: 600;
+    }
+
+    .help-item-copy,
+    .settings-item-copy {
+      margin: 0;
+      color: var(--text-soft);
+      line-height: 1.55;
+      font-size: 0.94rem;
+    }
+
+    [hidden] { display: none !important; }
+
+    @media (max-width: 980px) {
+      .shell-body {
+        grid-template-columns: 1fr;
+      }
+
+      .shell-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .app-header,
+      .app-footer,
+      .shell-body {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+
+      .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
 <body>
+  <div id="app-shell" class="app-shell">
+    <header id="app-header" class="app-header">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">BS</div>
+        <div class="brand-meta">
+          <p class="brand-kicker">REQ-1 / Browser-Server</p>
+          <h1 id="header-title" class="brand-title" data-i18n="header.title"></h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="header-settings-button" class="ghost-button" type="button" data-i18n="header.user_settings"></button>
+        <button id="header-help-button" class="ghost-button" type="button" data-i18n="header.help"></button>
+        <button id="header-language-button" class="ghost-button" type="button" aria-live="polite" data-i18n="header.language_switch"></button>
+      </div>
+    </header>
 
-<header>
-  <h1>Pi5 离线翻译系统</h1>
-  <span id="status-badge">检查中…</span>
-</header>
+    <div class="shell-body">
+      <aside id="app-sidebar" class="app-sidebar">
+        <nav data-i18n-attr="aria-label:a11y.primary_navigation">
+          <ul id="nav-mode-groups" class="nav-list">
+            <li><button class="nav-button" type="button" data-nav-kind="group" data-group-key="same_text_to_speech"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+            <li><button class="nav-button" type="button" data-nav-kind="group" data-group-key="same_speech_to_text"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+            <li><button class="nav-button" type="button" data-nav-kind="group" data-group-key="cross_text_to_speech"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+            <li><button class="nav-button" type="button" data-nav-kind="group" data-group-key="cross_speech_to_text"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+            <li><button class="nav-button" type="button" data-nav-kind="group" data-group-key="cross_text_to_text"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+            <li><button class="nav-button" type="button" data-nav-kind="group" data-group-key="cross_speech_to_speech"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+          </ul>
+          <ul class="nav-list">
+            <li><button id="nav-recordings" class="nav-button" type="button" data-nav-kind="recordings"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+            <li><button id="nav-history" class="nav-button" type="button" data-nav-kind="history"><span class="nav-label"></span><span class="nav-count"></span></button></li>
+          </ul>
+        </nav>
+      </aside>
 
-<main>
+      <div class="app-content">
+        <nav id="app-breadcrumb" class="app-breadcrumb" data-i18n-attr="aria-label:a11y.breadcrumb">
+          <span class="breadcrumb-label" data-i18n="breadcrumb.current_location"></span>
+          <ol id="breadcrumb-path" class="breadcrumb-path">
+            <li><span id="breadcrumb-group"></span></li>
+            <li><span id="breadcrumb-leaf"></span></li>
+          </ol>
+        </nav>
 
-  <!-- 翻译模式 -->
-  <section class="card" aria-labelledby="translate-heading">
-    <h2 id="translate-heading">翻译</h2>
-    <textarea
-      id="translate-input"
-      placeholder="输入要翻译的文字（留空则使用麦克风输入）"
-      aria-label="翻译输入文本"
-    ></textarea>
-    <div class="mode-grid" role="group" aria-label="翻译模式">
-      <button class="btn-mode" data-mode="1" aria-label="模式一：中文转英文">
-        中文 → 英文
-        <span class="mode-label">FR-01</span>
-      </button>
-      <button class="btn-mode" data-mode="2" aria-label="模式二：英文转中文">
-        英文 → 中文
-        <span class="mode-label">FR-02</span>
-      </button>
-      <button class="btn-mode" data-mode="3" aria-label="模式五：语音输入+翻译（先录音再翻译）">
-        语音输入
-        <span class="mode-label">FR-05</span>
-      </button>
-      <button class="btn-mode" data-mode="4" aria-label="模式六：中文语音转英文">
-        语音 中文→英文
-        <span class="mode-label">FR-06</span>
-      </button>
-      <button class="btn-mode" data-mode="5" aria-label="模式七：英文语音转中文">
-        语音 英文→中文
-        <span class="mode-label">FR-06</span>
-      </button>
-    </div>
-    <div id="lang-select" style="display:none; margin: 10px 0;">
-      <label>选择语音语言：</label>
-      <label><input type="radio" name="voice_lang" value="zh" checked> 中文</label>
-      <label><input type="radio" name="voice_lang" value="en"> 英文</label>
-    </div>
-    <div id="translate-result" role="status" aria-live="polite"></div>
-  </section>
-
-  <!-- 录音 -->
-  <section class="card" aria-labelledby="record-heading">
-    <h2 id="record-heading">录音</h2>
-    <button id="btn-record" aria-label="开始录音 FR-06">开始录音</button>
-    <p id="record-status" aria-live="polite"></p>
-  </section>
-
-  <!-- 历史记录 -->
-  <section class="card" aria-labelledby="history-heading">
-    <h2 id="history-heading">翻译历史</h2>
-    <div id="history-list"><div class="list-empty">加载中…</div></div>
-    <div class="export-row">
-      <button class="btn-export" id="btn-export-history">导出全部 ZIP</button>
-    </div>
-  </section>
-
-  <!-- 录音列表 -->
-  <section class="card" aria-labelledby="recordings-heading">
-    <h2 id="recordings-heading">录音列表</h2>
-    <div id="recordings-list"><div class="list-empty">加载中…</div></div>
-    <div class="export-row">
-      <button class="btn-export" id="btn-export-recordings">导出全部 ZIP</button>
-    </div>
-  </section>
-
-  <!-- 系统状态 -->
-  <section class="card" aria-labelledby="sysstat-heading">
-    <h2 id="sysstat-heading">系统状态</h2>
-    <div id="system-status">检查中…</div>
-  </section>
-
-</main>
-
-<div id="toast" role="alert" aria-live="assertive"></div>
-
-<script>
-  'use strict';
-
-  /* ── Utilities ── */
-
-  function showToast(msg, duration = 2800) {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.classList.add('show');
-    clearTimeout(el._timer);
-    el._timer = setTimeout(() => el.classList.remove('show'), duration);
-  }
-
-  async function apiFetch(url, options = {}) {
-    const res = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
-      ...options,
-    });
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        const body = await res.json();
-        detail = body.error || body.detail || detail;
-      } catch (_) { /* ignore parse error */ }
-      throw new Error(detail);
-    }
-    return res.json();
-  }
-
-  function formatDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d)) return iso;
-    return d.toLocaleString('zh-CN', { hour12: false });
-  }
-
-  /* ── System status ── */
-
-  async function loadStatus() {
-    const el = document.getElementById('system-status');
-    const badge = document.getElementById('status-badge');
-    try {
-      const data = await apiFetch('/api/health');
-      const ok = data.status === 'ok';
-      el.innerHTML = `API 状态：<span class="${ok ? 'status-ok' : 'status-err'}">${ok ? '正常' : '异常'}</span>`;
-      badge.textContent = ok ? '在线' : '异常';
-      badge.style.background = ok ? 'rgba(82,196,26,.3)' : 'rgba(255,77,79,.3)';
-    } catch (err) {
-      el.innerHTML = `API 状态：<span class="status-err">无法连接</span>`;
-      badge.textContent = '离线';
-      badge.style.background = 'rgba(255,77,79,.3)';
-    }
-  }
-
-  /* ── History list ── */
-
-  async function loadHistory() {
-    const container = document.getElementById('history-list');
-    try {
-      const records = await apiFetch('/api/history');
-      if (!Array.isArray(records) || records.length === 0) {
-        container.innerHTML = '<div class="list-empty">暂无历史记录</div>';
-        return;
-      }
-      container.innerHTML = records.map(r => `
-        <div class="list-item">
-          <div class="list-item-info">
-            <div class="item-title" title="${escHtml(r.text || '')}">
-              ${escHtml(r.text || '（无文本）')}
+        <main id="app-main" class="shell-main">
+          <section id="app-summary" class="summary-card" data-i18n-attr="aria-label:a11y.current_mode_summary">
+            <div class="summary-top">
+              <div>
+                <h2 id="summary-mode" class="summary-mode">--</h2>
+                <p id="summary-caption" class="summary-caption"></p>
+              </div>
+              <div class="status-row">
+                <span id="summary-status" class="status-pill">
+                  <span class="status-dot" aria-hidden="true"></span>
+                  <span id="summary-status-label" data-i18n="status.ready"></span>
+                </span>
+              </div>
             </div>
-            <div class="item-meta">${formatDate(r.created_at)} · 模式 ${escHtml(String(r.mode || ''))}</div>
+            <div id="summary-meta" class="summary-meta"></div>
+          </section>
+
+          <div id="utility-panels" class="shell-grid utility-grid">
+            <section id="app-help-panel" class="shell-card utility-card" aria-labelledby="help-panel-title" hidden>
+              <div class="shell-card-head">
+                <div>
+                  <h3 id="help-panel-title" class="shell-card-title" data-i18n="panel.help"></h3>
+                  <p id="help-panel-caption" class="section-caption"></p>
+                </div>
+              </div>
+              <div id="help-panel-list" class="help-list"></div>
+            </section>
+
+            <section id="app-settings-panel" class="shell-card utility-card" aria-labelledby="settings-panel-title" hidden>
+              <div class="shell-card-head">
+                <div>
+                  <h3 id="settings-panel-title" class="shell-card-title" data-i18n="panel.settings"></h3>
+                  <p id="settings-panel-caption" class="section-caption"></p>
+                </div>
+              </div>
+
+              <div class="panel-stack">
+                <div class="section-row">
+                  <div>
+                    <p class="field-label" data-i18n="settings.locale_label"></p>
+                    <p id="settings-locale-hint" class="section-caption"></p>
+                  </div>
+                </div>
+
+                <div class="mode-picker">
+                  <button id="settings-locale-zh" class="secondary-button" type="button"></button>
+                  <button id="settings-locale-en" class="secondary-button" type="button"></button>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <div class="section-row">
+                  <p class="field-label" data-i18n="settings.current_view"></p>
+                  <span id="settings-current-view" class="meta-pill">--</span>
+                </div>
+
+                <div class="section-row">
+                  <p class="field-label" data-i18n="settings.constraints"></p>
+                </div>
+
+                <div id="settings-constraints-list" class="settings-list"></div>
+              </div>
+            </section>
           </div>
-          ${r.id != null && r.has_audio
-            ? `<button class="btn-dl" onclick="downloadAudio('/api/history/${r.id}/audio', 'history_${r.id}.wav')">下载音频</button>`
-            : ''}
-        </div>
-      `).join('');
-    } catch (err) {
-      container.innerHTML = '<div class="list-empty">加载失败，请刷新重试</div>';
+
+          <section id="history-full-section" class="shell-card history-section" aria-labelledby="history-full-title" hidden>
+            <div class="shell-card-head">
+              <div>
+                <h3 id="history-full-title" class="shell-card-title" data-i18n="history.full_title"></h3>
+                <p id="history-full-caption" class="section-caption"></p>
+              </div>
+              <span id="history-full-count" class="meta-pill">0 / 5</span>
+            </div>
+
+            <div class="history-toolbar">
+              <button id="history-refresh-button" class="secondary-button" type="button" data-i18n="history.refresh"></button>
+              <a id="history-full-export-link" class="link-button" href="/api/history/export" download="history_export.zip" data-i18n="history.export"></a>
+            </div>
+
+            <div id="history-full-list" class="history-list"></div>
+          </section>
+
+          <div id="app-shell-grid" class="shell-grid">
+            <section id="app-input-panel" class="shell-card" aria-labelledby="input-panel-title">
+              <div class="shell-card-head">
+                <div>
+                  <h3 id="input-panel-title" class="shell-card-title" data-i18n="panel.input"></h3>
+                  <p id="mode-picker-caption" class="section-caption" data-i18n="text.mode_picker"></p>
+                </div>
+                <span id="active-mode-key" class="meta-pill">--</span>
+              </div>
+
+              <div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>
+
+              <div id="text-input-section" class="panel-stack">
+                <label class="field-label" for="text-input" data-i18n="text.input_label"></label>
+                <textarea id="text-input" class="text-input" rows="8"></textarea>
+                <div class="inline-row">
+                  <label id="text-upload-label" class="file-button">
+                    <input id="text-upload-input" type="file" accept=".txt,text/plain">
+                    <span data-i18n="text.upload_txt"></span>
+                  </label>
+                  <button id="text-clear-button" class="secondary-button" type="button" data-i18n="text.clear"></button>
+                </div>
+                <p id="text-input-hint" class="section-caption"></p>
+              </div>
+
+              <div id="speech-input-section" class="panel-stack" hidden>
+                <p class="field-label" data-i18n="speech.input_label"></p>
+                <div class="button-row">
+                  <button id="speech-record-button" class="secondary-button" type="button" data-i18n="speech.record_start"></button>
+                  <button id="speech-stop-button" class="secondary-button" type="button" data-i18n="speech.record_stop"></button>
+                  <label id="speech-upload-label" class="file-button">
+                    <input id="speech-upload-input" type="file" accept=".wav,audio/wav">
+                    <span data-i18n="speech.upload_wav"></span>
+                  </label>
+                  <button id="speech-clear-button" class="secondary-button" type="button" data-i18n="speech.clear_audio"></button>
+                </div>
+                <p id="speech-input-hint" class="section-caption"></p>
+                <p id="speech-source-status" class="status-note"></p>
+                <div id="speech-preview-block" class="result-block" hidden>
+                  <p class="result-label" data-i18n="speech.source_audio"></p>
+                  <audio id="speech-preview-player" class="result-audio" controls></audio>
+                </div>
+                <div class="section-divider"></div>
+                <div class="section-row">
+                  <p class="field-label" data-i18n="speech.recordings_label"></p>
+                  <span id="speech-recordings-count" class="meta-pill">0</span>
+                </div>
+                <div id="speech-recordings-list" class="recording-list"></div>
+              </div>
+            </section>
+
+            <section id="app-control-panel" class="shell-card" aria-labelledby="control-panel-title">
+              <div class="shell-card-head">
+                <div>
+                  <h3 id="control-panel-title" class="shell-card-title" data-i18n="panel.control"></h3>
+                  <p id="control-panel-caption" class="section-caption"></p>
+                </div>
+              </div>
+
+              <div class="button-row">
+                <button id="text-start-button" class="primary-button" type="button"></button>
+                <button id="text-reset-button" class="secondary-button" type="button"></button>
+                <button id="text-save-button" class="secondary-button" type="button"></button>
+              </div>
+
+              <p id="text-flow-status" class="status-note"></p>
+            </section>
+
+            <section id="app-output-panel" class="shell-card" aria-labelledby="output-panel-title">
+              <div class="shell-card-head">
+                <div>
+                  <h3 id="output-panel-title" class="shell-card-title" data-i18n="panel.output"></h3>
+                  <p id="output-panel-caption" class="section-caption"></p>
+                </div>
+              </div>
+
+              <p id="text-result-empty" class="result-empty"></p>
+
+              <div id="text-result" class="result-stack" hidden>
+                <div id="result-source-audio-block" class="result-block" hidden>
+                  <p class="result-label" data-i18n="speech.source_audio"></p>
+                  <audio id="result-source-audio-player" class="result-audio" controls></audio>
+                </div>
+
+                <div id="result-source-block" class="result-block" hidden>
+                  <p class="result-label" data-i18n="text.result_source"></p>
+                  <pre id="result-source-text" class="result-text"></pre>
+                </div>
+
+                <div id="result-output-block" class="result-block" hidden>
+                  <p class="result-label" data-i18n="text.result_output"></p>
+                  <pre id="result-output-text" class="result-text"></pre>
+                </div>
+
+                <div id="result-audio-block" class="result-block" hidden>
+                  <p class="result-label" data-i18n="text.result_audio"></p>
+                  <audio id="result-audio-player" class="result-audio" controls></audio>
+                </div>
+
+                <div class="button-row">
+                  <button id="text-copy-button" class="secondary-button" type="button" hidden></button>
+                  <a id="text-download-link" class="link-button" href="#" download hidden></a>
+                </div>
+              </div>
+            </section>
+
+            <section id="app-history-panel" class="shell-card" aria-labelledby="history-panel-title">
+              <div class="shell-card-head">
+                <div>
+                  <h3 id="history-panel-title" class="shell-card-title" data-i18n="panel.history"></h3>
+                  <p id="history-panel-caption" class="section-caption"></p>
+                </div>
+                <span id="recent-history-count" class="meta-pill">0 / 5</span>
+              </div>
+
+              <div class="history-toolbar">
+                <button id="history-view-all-button" class="secondary-button" type="button" data-i18n="history.view_all"></button>
+                <a id="history-export-link" class="link-button" href="/api/history/export" download="history_export.zip" data-i18n="history.export"></a>
+              </div>
+
+              <div id="recent-history-list" class="history-list">
+                <p id="history-placeholder" class="history-placeholder" data-i18n="history.recent_loading"></p>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <footer id="app-footer" class="app-footer">
+      <span id="footer-constraints" data-i18n="footer.constraints_hint"></span>
+      <span id="footer-status" class="footer-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="footer-status-label" data-i18n="status.ready"></span>
+      </span>
+    </footer>
+  </div>
+
+  <script>
+    const GROUP_ORDER = [
+      'same_text_to_speech',
+      'same_speech_to_text',
+      'cross_text_to_speech',
+      'cross_speech_to_text',
+      'cross_text_to_text',
+      'cross_speech_to_speech',
+    ];
+
+    const HELP_ITEM_KEYS = [
+      ['help.text_title', 'help.text_desc'],
+      ['help.speech_title', 'help.speech_desc'],
+      ['help.history_title', 'help.history_desc'],
+    ];
+
+    const SETTINGS_CONSTRAINT_KEYS = [
+      'settings.max_record_seconds',
+      'settings.max_history',
+      'settings.max_recordings',
+    ];
+
+    const SPEECH_REUSE_MODE_KEYS = [
+      'asr_zh_zh',
+      'asr_en_en',
+      'asr_mt_zh_en',
+      'asr_mt_en_zh',
+      'asr_mt_tts_zh_en',
+      'asr_mt_tts_en_zh',
+    ];
+
+    const state = {
+      locale: 'zh-CN',
+      i18n: {},
+      groupedModes: new Map(),
+      activeKind: 'group',
+      activeGroupKey: GROUP_ORDER[0],
+      activeModeKey: '',
+      activePanel: '',
+      constraints: null,
+      healthOk: true,
+      textInput: '',
+      lastResult: null,
+      isSubmitting: false,
+      flowStatus: { key: 'text.input_hint', tone: 'info', raw: '' },
+      recordings: [],
+      recordingsState: 'idle',
+      speechInput: {
+        sourceType: '',
+        blob: null,
+        fileName: '',
+        previewUrl: '',
+        previewUrlOwned: false,
+        recordingId: null,
+        durationSeconds: 0,
+      },
+      pendingReuseRecording: null,
+      recordingRuntime: null,
+      isRecording: false,
+      recordSeconds: 0,
+      recordTimerId: null,
+      history: {
+        recent: [],
+        recentState: 'idle',
+        full: [],
+        fullState: 'idle',
+        focusId: null,
+        deletingId: null,
+      },
+    };
+
+    function getMessage(key) {
+      return state.i18n?.[state.locale]?.[key] ?? '';
     }
-  }
 
-  /* ── Recordings list ── */
+    function getLeafLabel(modeKey) {
+      return getMessage(`mode.${modeKey}`) || modeKey;
+    }
 
-  async function loadRecordings() {
-    const container = document.getElementById('recordings-list');
-    try {
-      const recordings = await apiFetch('/api/recordings');
-      if (!Array.isArray(recordings) || recordings.length === 0) {
-        container.innerHTML = '<div class="list-empty">暂无录音</div>';
+    function getLanguageLabel(code) {
+      return getMessage(`common.language.${code}`) || String(code || '').toUpperCase();
+    }
+
+    function getInputTypeLabel(kind) {
+      return getMessage(`common.input_type.${kind}`) || kind;
+    }
+
+    function getOutputTypeLabel(kind) {
+      return getMessage(`common.output_type.${kind}`) || kind;
+    }
+
+    function getCurrentViewLabel() {
+      if (state.activeKind === 'recordings') {
+        return getMessage('nav.recordings');
+      }
+      if (state.activeKind === 'history') {
+        return getMessage('nav.history');
+      }
+      const activeMode = getActiveMode();
+      return activeMode ? getLeafLabel(activeMode.mode_key) : '--';
+    }
+
+    function getConstraintValue(labelKey) {
+      if (labelKey === 'settings.max_record_seconds') {
+        return `${state.constraints?.max_record_seconds ?? 180} ${getMessage('common.unit_seconds')}`;
+      }
+      if (labelKey === 'settings.max_history') {
+        return `${state.constraints?.max_history ?? 5} ${getMessage('common.unit_sets')}`;
+      }
+      return `${state.constraints?.max_recordings ?? 5} ${getMessage('common.unit_sets')}`;
+    }
+
+    function isTextMode(mode) {
+      return Boolean(mode && mode.input_type === 'text');
+    }
+
+    function isSpeechMode(mode) {
+      return Boolean(mode && mode.input_type === 'audio');
+    }
+
+    function getModeByKey(modeKey) {
+      for (const modes of state.groupedModes.values()) {
+        const found = modes.find((mode) => mode.mode_key === modeKey);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    function listSpeechReuseModes() {
+      return SPEECH_REUSE_MODE_KEYS
+        .map((modeKey) => getModeByKey(modeKey))
+        .filter(Boolean);
+    }
+
+    function getActiveMode() {
+      if (state.activeKind !== 'group' || state.pendingReuseRecording) {
+        return null;
+      }
+      const modes = state.groupedModes.get(state.activeGroupKey) || [];
+      return modes.find((mode) => mode.mode_key === state.activeModeKey) || modes[0] || null;
+    }
+
+    function setTextByKey() {
+      document.querySelectorAll('[data-i18n]').forEach((node) => {
+        const key = node.getAttribute('data-i18n');
+        node.textContent = getMessage(key);
+      });
+      document.querySelectorAll('[data-i18n-attr]').forEach((node) => {
+        const [attr, key] = node.getAttribute('data-i18n-attr').split(':');
+        if (!attr || !key) {
+          return;
+        }
+        node.setAttribute(attr, getMessage(key));
+      });
+    }
+
+    function setFlowStatus(key, tone = 'info', raw = '') {
+      state.flowStatus = { key, tone, raw };
+      renderFlowStatus();
+    }
+
+    function appendMetaPill(container, text) {
+      const pill = document.createElement('span');
+      pill.className = 'meta-pill';
+      pill.textContent = text;
+      container.appendChild(pill);
+    }
+
+    function groupModes(modes) {
+      const grouped = new Map();
+      GROUP_ORDER.forEach((groupKey) => grouped.set(groupKey, []));
+      modes.forEach((mode) => {
+        if (!grouped.has(mode.group_key)) {
+          grouped.set(mode.group_key, []);
+        }
+        grouped.get(mode.group_key).push(mode);
+      });
+      return grouped;
+    }
+
+    function cleanupSpeechPreviewUrl() {
+      if (state.speechInput.previewUrl && state.speechInput.previewUrlOwned) {
+        URL.revokeObjectURL(state.speechInput.previewUrl);
+      }
+    }
+
+    function setSpeechInputSource({
+      sourceType,
+      blob = null,
+      fileName = '',
+      previewUrl = '',
+      previewUrlOwned = false,
+      recordingId = null,
+      durationSeconds = 0,
+    }) {
+      cleanupSpeechPreviewUrl();
+      state.speechInput = {
+        sourceType,
+        blob,
+        fileName,
+        previewUrl,
+        previewUrlOwned,
+        recordingId,
+        durationSeconds,
+      };
+    }
+
+    function clearSpeechInputSource() {
+      setSpeechInputSource({ sourceType: '' });
+    }
+
+    function clearPendingReuseRecording() {
+      state.pendingReuseRecording = null;
+    }
+
+    function resetResultForModeChange() {
+      state.lastResult = null;
+    }
+
+    function formatSeconds(value) {
+      const total = Math.max(0, Math.round(value || 0));
+      const minutes = Math.floor(total / 60);
+      const seconds = total % 60;
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function clipText(value, limit = 88) {
+      const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+      if (!normalized) {
+        return '';
+      }
+      return normalized.length <= limit ? normalized : `${normalized.slice(0, limit).trimEnd()}…`;
+    }
+
+    function createMessageNode(message, className = 'recording-empty') {
+      const node = document.createElement('p');
+      node.className = className;
+      node.textContent = message;
+      return node;
+    }
+
+    function createActionButton(label, onClick, extraClass = 'secondary-button') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = extraClass;
+      button.textContent = label;
+      button.onclick = onClick;
+      return button;
+    }
+
+    function createActionLink(label, href) {
+      const link = document.createElement('a');
+      link.className = 'link-button';
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.textContent = label;
+      return link;
+    }
+
+    function createHistoryPreview(labelKey, value, fallback = '--') {
+      const preview = document.createElement('p');
+      preview.className = 'history-preview';
+      const label = document.createElement('strong');
+      label.textContent = `${getMessage(labelKey)}: `;
+      preview.appendChild(label);
+      preview.appendChild(document.createTextNode(value || fallback));
+      return preview;
+    }
+
+    function createHistoryAudioBlock(labelKey, url) {
+      const block = document.createElement('div');
+      block.className = 'result-block';
+      const label = document.createElement('p');
+      label.className = 'result-label';
+      label.textContent = getMessage(labelKey);
+      const audio = document.createElement('audio');
+      audio.className = 'result-audio';
+      audio.controls = true;
+      audio.src = url;
+      block.append(label, audio);
+      return block;
+    }
+
+    function renderViewVisibility() {
+      const shellGrid = document.getElementById('app-shell-grid');
+      const historySection = document.getElementById('history-full-section');
+      const isHistoryView = state.activeKind === 'history';
+      shellGrid.hidden = isHistoryView;
+      historySection.hidden = !isHistoryView;
+    }
+
+    function toggleUtilityPanel(panelKey) {
+      state.activePanel = state.activePanel === panelKey ? '' : panelKey;
+      renderShell();
+    }
+
+    function setLocale(locale) {
+      if (!state.i18n?.[locale] || state.locale === locale) {
         return;
       }
-      container.innerHTML = recordings.map(r => `
-        <div class="list-item">
-          <div class="list-item-info">
-            <div class="item-title">${escHtml(r.filename || `录音 ${r.id}`)}</div>
-            <div class="item-meta">${formatDate(r.created_at)}${r.duration ? ` · ${r.duration}s` : ''}</div>
+      state.locale = locale;
+      renderShell();
+    }
+
+    function describeSpeechSelection() {
+      const input = state.speechInput;
+      if (state.isRecording) {
+        return `${getMessage('speech.recording_status_active')} ${formatSeconds(state.recordSeconds)} / ${formatSeconds(state.constraints?.max_record_seconds || 180)}`;
+      }
+      if (input.sourceType === 'recording' && input.recordingId !== null) {
+        return `${getMessage('speech.recording_selected')} #${input.recordingId}`;
+      }
+      if ((input.sourceType === 'record' || input.sourceType === 'upload') && input.fileName) {
+        return `${getMessage('speech.source_selected')} ${input.fileName} (${formatSeconds(input.durationSeconds)})`;
+      }
+      return getMessage('speech.recording_status_idle');
+    }
+
+    function setDefaultFlowStatus() {
+      if (state.pendingReuseRecording) {
+        setFlowStatus('', 'info', `${getMessage('speech.use_recording')} #${state.pendingReuseRecording.id} / ${getMessage('text.mode_picker')}`);
+        return;
+      }
+      const activeMode = getActiveMode();
+      if (state.activeKind !== 'group') {
+        setFlowStatus('text.non_text_mode_pending', 'info');
+        return;
+      }
+      if (!activeMode) {
+        setFlowStatus('status.ready', 'ready');
+        return;
+      }
+      if (isTextMode(activeMode)) {
+        setFlowStatus('text.input_hint', 'info');
+        return;
+      }
+      setFlowStatus('speech.input_hint', 'info');
+    }
+
+    function changeActiveView(kind, groupKey = state.activeGroupKey) {
+      clearPendingReuseRecording();
+      state.activeKind = kind;
+      if (kind === 'group') {
+        state.activeGroupKey = groupKey;
+        state.activeModeKey = (state.groupedModes.get(groupKey) || [])[0]?.mode_key || '';
+      }
+      resetResultForModeChange();
+      setDefaultFlowStatus();
+      renderShell();
+    }
+
+    function bindSecondaryNav(id, kind, label) {
+      const button = document.getElementById(id);
+      button.classList.toggle('is-active', state.activeKind === kind);
+      button.querySelector('.nav-label').textContent = label;
+      button.querySelector('.nav-count').textContent = '1';
+      button.onclick = () => changeActiveView(kind);
+    }
+
+    function renderNav() {
+      document.querySelectorAll('#nav-mode-groups [data-nav-kind="group"]').forEach((button) => {
+        const groupKey = button.dataset.groupKey;
+        const modes = state.groupedModes.get(groupKey) || [];
+        button.classList.toggle('is-active', state.activeKind === 'group' && state.activeGroupKey === groupKey);
+        button.querySelector('.nav-label').textContent = getMessage(`nav.${groupKey}`) || groupKey;
+        button.querySelector('.nav-count').textContent = String(modes.length);
+        button.onclick = () => changeActiveView('group', groupKey);
+      });
+
+      bindSecondaryNav('nav-recordings', 'recordings', getMessage('nav.recordings'));
+      bindSecondaryNav('nav-history', 'history', getMessage('nav.history'));
+    }
+
+    function renderBreadcrumb() {
+      const groupEl = document.getElementById('breadcrumb-group');
+      const leafEl = document.getElementById('breadcrumb-leaf');
+      if (state.activeKind === 'recordings') {
+        groupEl.textContent = getMessage('nav.recordings');
+        leafEl.textContent = '';
+        return;
+      }
+      if (state.activeKind === 'history') {
+        groupEl.textContent = getMessage('nav.history');
+        leafEl.textContent = '';
+        return;
+      }
+      const activeMode = getActiveMode();
+      groupEl.textContent = getMessage(`nav.${state.activeGroupKey}`) || state.activeGroupKey;
+      leafEl.textContent = activeMode ? getLeafLabel(activeMode.mode_key) : '';
+    }
+
+    function renderSummary() {
+      const activeMode = getActiveMode();
+      const summaryMode = document.getElementById('summary-mode');
+      const summaryCaption = document.getElementById('summary-caption');
+      const summaryMeta = document.getElementById('summary-meta');
+      summaryMeta.innerHTML = '';
+
+      if (state.activeKind === 'recordings') {
+        summaryMode.textContent = getMessage('nav.recordings');
+        summaryCaption.textContent = getMessage('speech.input_hint');
+        appendMetaPill(summaryMeta, `${getMessage('settings.max_recordings')} · ${state.constraints?.max_recordings ?? 5}`);
+        return;
+      }
+
+      if (state.activeKind === 'history') {
+        summaryMode.textContent = getMessage('nav.history');
+        summaryCaption.textContent = getMessage('history.full_caption');
+        appendMetaPill(summaryMeta, `${state.history.full.length} / ${state.constraints?.max_history ?? 5}`);
+        return;
+      }
+
+      if (state.pendingReuseRecording) {
+        summaryMode.textContent = `${getMessage('speech.use_recording')} #${state.pendingReuseRecording.id}`;
+        summaryCaption.textContent = getMessage('text.mode_picker');
+        appendMetaPill(summaryMeta, `${listSpeechReuseModes().length} ${getMessage('common.unit_sets')}`);
+        appendMetaPill(summaryMeta, getMessage('common.input_type.audio'));
+        return;
+      }
+
+      summaryMode.textContent = activeMode ? getLeafLabel(activeMode.mode_key) : '--';
+      summaryCaption.textContent = activeMode ? `${getMessage(`nav.${activeMode.group_key}`)} / ${getLeafLabel(activeMode.mode_key)}` : '';
+      if (!activeMode) {
+        return;
+      }
+
+      appendMetaPill(summaryMeta, `${getLanguageLabel(activeMode.source_lang)} → ${getLanguageLabel(activeMode.target_lang)}`);
+      appendMetaPill(summaryMeta, `${getInputTypeLabel(activeMode.input_type)} → ${getOutputTypeLabel(activeMode.output_type)}`);
+      appendMetaPill(summaryMeta, getMessage(`nav.${activeMode.group_key}`));
+    }
+
+    function renderUtilityPanels() {
+      const helpPanel = document.getElementById('app-help-panel');
+      const settingsPanel = document.getElementById('app-settings-panel');
+      const helpButton = document.getElementById('header-help-button');
+      const settingsButton = document.getElementById('header-settings-button');
+      const localeZhButton = document.getElementById('settings-locale-zh');
+      const localeEnButton = document.getElementById('settings-locale-en');
+      const helpCaption = document.getElementById('help-panel-caption');
+      const settingsCaption = document.getElementById('settings-panel-caption');
+      const settingsLocaleHint = document.getElementById('settings-locale-hint');
+      const settingsCurrentView = document.getElementById('settings-current-view');
+      const settingsConstraintsList = document.getElementById('settings-constraints-list');
+      const helpPanelList = document.getElementById('help-panel-list');
+
+      helpPanel.hidden = state.activePanel !== 'help';
+      settingsPanel.hidden = state.activePanel !== 'settings';
+      helpButton.classList.toggle('is-active', state.activePanel === 'help');
+      settingsButton.classList.toggle('is-active', state.activePanel === 'settings');
+
+      helpCaption.textContent = getMessage('help.caption');
+      settingsCaption.textContent = getMessage('settings.caption');
+      settingsLocaleHint.textContent = getMessage('settings.locale_hint');
+      settingsCurrentView.textContent = getCurrentViewLabel();
+
+      localeZhButton.textContent = getMessage('settings.locale_zh');
+      localeEnButton.textContent = getMessage('settings.locale_en');
+      localeZhButton.classList.toggle('is-active', state.locale === 'zh-CN');
+      localeEnButton.classList.toggle('is-active', state.locale === 'en-US');
+      localeZhButton.onclick = () => setLocale('zh-CN');
+      localeEnButton.onclick = () => setLocale('en-US');
+
+      helpPanelList.innerHTML = '';
+      HELP_ITEM_KEYS.forEach(([titleKey, descKey]) => {
+        const item = document.createElement('article');
+        item.className = 'help-item';
+        item.innerHTML = `
+          <h4 class="help-item-title">${getMessage(titleKey)}</h4>
+          <p class="help-item-copy">${getMessage(descKey)}</p>
+        `;
+        helpPanelList.appendChild(item);
+      });
+      const note = document.createElement('article');
+      note.className = 'help-item';
+      note.innerHTML = `<p class="help-item-copy">${getMessage('help.settings_note')}</p>`;
+      helpPanelList.appendChild(note);
+
+      settingsConstraintsList.innerHTML = '';
+      SETTINGS_CONSTRAINT_KEYS.forEach((labelKey) => {
+        const item = document.createElement('article');
+        item.className = 'settings-item';
+        item.innerHTML = `
+          <h4 class="settings-item-title">${getMessage(labelKey)}</h4>
+          <p class="settings-item-copy">${getConstraintValue(labelKey)}</p>
+        `;
+        settingsConstraintsList.appendChild(item);
+      });
+    }
+
+    function renderModePicker() {
+      const picker = document.getElementById('text-mode-picker');
+      picker.innerHTML = '';
+      if (state.activeKind !== 'group') {
+        return;
+      }
+
+      const reuseRecording = state.pendingReuseRecording;
+      const modes = reuseRecording ? listSpeechReuseModes() : (state.groupedModes.get(state.activeGroupKey) || []);
+      modes.forEach((mode) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'mode-pill';
+        button.textContent = getLeafLabel(mode.mode_key);
+        button.classList.toggle('is-active', !reuseRecording && mode.mode_key === state.activeModeKey);
+        button.onclick = () => {
+          if (reuseRecording) {
+            state.activeGroupKey = mode.group_key;
+            state.activeModeKey = mode.mode_key;
+            clearPendingReuseRecording();
+            setSpeechInputSource({
+              sourceType: 'recording',
+              previewUrl: reuseRecording.audio_url,
+              previewUrlOwned: false,
+              recordingId: reuseRecording.id,
+              durationSeconds: reuseRecording.duration_seconds || 0,
+              fileName: `recording-${reuseRecording.id}.wav`,
+            });
+            resetResultForModeChange();
+            setFlowStatus('speech.recording_selected', 'ready', `${getMessage('speech.recording_selected')} #${reuseRecording.id}`);
+            renderShell();
+            return;
+          }
+          state.activeModeKey = mode.mode_key;
+          resetResultForModeChange();
+          setDefaultFlowStatus();
+          renderShell();
+        };
+        picker.appendChild(button);
+      });
+    }
+
+    function renderRecordingsList() {
+      const list = document.getElementById('speech-recordings-list');
+      const count = document.getElementById('speech-recordings-count');
+      list.innerHTML = '';
+      count.textContent = String(state.recordings.length);
+
+      if (state.recordingsState === 'loading') {
+        list.innerHTML = `<p class="recording-empty">${getMessage('speech.recordings_loading')}</p>`;
+        return;
+      }
+
+      if (state.recordingsState === 'error') {
+        list.innerHTML = `<p class="recording-empty">${getMessage('speech.recordings_failed')}</p>`;
+        return;
+      }
+
+      if (!state.recordings.length) {
+        list.innerHTML = `<p class="recording-empty">${getMessage('speech.no_recordings')}</p>`;
+        return;
+      }
+
+      state.recordings.forEach((recording) => {
+        const card = document.createElement('article');
+        card.className = 'recording-card';
+        card.innerHTML = `
+          <div class="recording-head">
+            <div>
+              <p class="recording-title">#${recording.id}</p>
+              <p class="recording-meta">${recording.created_at} · ${formatSeconds(recording.duration_seconds)}</p>
+            </div>
+            <button type="button" class="recording-action">${getMessage('speech.use_recording')}</button>
           </div>
-          ${r.id != null
-            ? `<button class="btn-dl" onclick="downloadAudio('/api/recordings/${r.id}/audio', 'recording_${r.id}.wav')">下载</button>`
-            : ''}
-        </div>
-      `).join('');
-    } catch (err) {
-      container.innerHTML = '<div class="list-empty">加载失败，请刷新重试</div>';
+          <audio class="recording-audio" controls src="${recording.audio_url}"></audio>
+        `;
+        const button = card.querySelector('.recording-action');
+        button.classList.toggle('is-active', state.speechInput.sourceType === 'recording' && state.speechInput.recordingId === recording.id);
+        button.onclick = () => {
+          state.activeKind = 'group';
+          state.activeGroupKey = 'same_speech_to_text';
+          state.activeModeKey = '';
+          state.pendingReuseRecording = {
+            id: recording.id,
+            audio_url: recording.audio_url,
+            duration_seconds: recording.duration_seconds || 0,
+          };
+          resetResultForModeChange();
+          setFlowStatus('', 'info', `${getMessage('speech.use_recording')} #${recording.id} / ${getMessage('text.mode_picker')}`);
+          renderShell();
+        };
+        list.appendChild(card);
+      });
     }
-  }
 
-  /* ── Download helper ── */
+    function renderInputPanel() {
+      const activeMode = getActiveMode();
+      const isText = state.activeKind === 'group' && isTextMode(activeMode);
+      const isSpeech = state.activeKind === 'group' && isSpeechMode(activeMode);
+      const activeModeKey = document.getElementById('active-mode-key');
+      const textSection = document.getElementById('text-input-section');
+      const speechSection = document.getElementById('speech-input-section');
+      const textInput = document.getElementById('text-input');
+      const textUploadInput = document.getElementById('text-upload-input');
+      const textUploadLabel = document.getElementById('text-upload-label');
+      const textClearButton = document.getElementById('text-clear-button');
+      const speechUploadInput = document.getElementById('speech-upload-input');
+      const speechUploadLabel = document.getElementById('speech-upload-label');
+      const speechRecordButton = document.getElementById('speech-record-button');
+      const speechStopButton = document.getElementById('speech-stop-button');
+      const speechClearButton = document.getElementById('speech-clear-button');
+      const speechPreviewBlock = document.getElementById('speech-preview-block');
+      const speechPreviewPlayer = document.getElementById('speech-preview-player');
+      const speechHint = document.getElementById('speech-input-hint');
+      const speechSourceStatus = document.getElementById('speech-source-status');
+      const controlCaption = document.getElementById('control-panel-caption');
+      const outputCaption = document.getElementById('output-panel-caption');
+      const historyCaption = document.getElementById('history-panel-caption');
+      const textHint = document.getElementById('text-input-hint');
 
-  function downloadAudio(url, filename) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
+      activeModeKey.textContent = activeMode ? activeMode.mode_key : '--';
 
-  /* ── XSS guard ── */
+      textSection.hidden = !isText;
+      speechSection.hidden = !isSpeech;
 
-  function escHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
+      textInput.value = state.textInput;
+      textInput.disabled = !isText;
+      textUploadInput.disabled = !isText;
+      textUploadLabel.classList.toggle('is-disabled', !isText);
+      textClearButton.disabled = !isText;
 
-  /* ── Translation ── */
+      speechUploadInput.disabled = !isSpeech || state.isRecording;
+      speechUploadLabel.classList.toggle('is-disabled', !isSpeech || state.isRecording);
+      speechRecordButton.disabled = !isSpeech || state.isRecording || state.isSubmitting;
+      speechStopButton.disabled = !state.isRecording;
+      speechClearButton.disabled = !isSpeech || state.isRecording;
 
-  const MODE_CONFIG = {
-    1: { source_lang: 'zh', target_lang: 'en', description: '文字转语音 (TTS)', type: 'text' },
-    2: { source_lang: 'en', target_lang: 'zh', description: '语音转文字 (ASR)', type: 'text' },
-    3: { source_lang: 'zh', target_lang: 'en', description: '语音输入+翻译', type: 'record' },
-    4: { source_lang: 'zh', target_lang: 'en', description: '中文语音→翻译+朗读', type: 'asr_mt' },
-    5: { source_lang: 'en', target_lang: 'zh', description: '英文语音→翻译+朗读', type: 'asr_mt' },
-  };
-
-  async function runTranslate(mode) {
-    const text = document.getElementById('translate-input').value.trim();
-    const resultEl = document.getElementById('translate-result');
-    const buttons = document.querySelectorAll('.btn-mode');
-    const config = MODE_CONFIG[mode];
-
-    buttons.forEach(b => b.disabled = true);
-    resultEl.style.display = 'block';
-    resultEl.className = '';
-
-    try {
-      let data;
-
-      // 模式3: 语音输入（先录音，再翻译，可选语言）
-      if (mode === 3) {
-        const langSelect = document.getElementById('lang-select');
-        langSelect.style.display = 'block';
-        resultEl.innerHTML = '<span class="spinner"></span>请说话，正在录音…';
-        const recordData = await apiFetch('/api/record', { method: 'POST' });
-        resultEl.innerHTML = '<span class="spinner"></span>录音完成，正在翻译…';
-        const voiceLang = document.querySelector('input[name="voice_lang"]:checked')?.value || 'zh';
-        langSelect.style.display = 'none';
-        data = await apiFetch('/api/translate', {
-          method: 'POST',
-          body: JSON.stringify({
-            mode: 4,
-            text: '',
-            source_lang: voiceLang,
-            target_lang: voiceLang === 'zh' ? 'en' : 'zh',
-          }),
-        });
-      }
-      // 模式4, 5: 语音输入 + 翻译 + 朗读（固定语言）
-      else if (mode === 4 || mode === 5) {
-        resultEl.innerHTML = '<span class="spinner"></span>请说话，正在录音和翻译…';
-        const voiceLang = config.source_lang;
-        const targetLang = config.target_lang;
-        data = await apiFetch('/api/translate', {
-          method: 'POST',
-          body: JSON.stringify({
-            mode: 4,
-            text: '',
-            source_lang: voiceLang,
-            target_lang: targetLang,
-          }),
-        });
-      }
-      // 模式1, 2: 纯文字模式
-      else {
-        resultEl.innerHTML = '<span class="spinner"></span>翻译中…';
-        data = await apiFetch('/api/translate', {
-          method: 'POST',
-          body: JSON.stringify({
-            mode,
-            text,
-            source_lang: config.source_lang,
-            target_lang: config.target_lang,
-          }),
-        });
+      speechPreviewBlock.hidden = !isSpeech || !state.speechInput.previewUrl;
+      speechPreviewPlayer.src = isSpeech && state.speechInput.previewUrl ? state.speechInput.previewUrl : '';
+      speechHint.textContent = getMessage('speech.input_hint');
+      speechSourceStatus.textContent = describeSpeechSelection();
+      speechSourceStatus.className = 'status-note';
+      if (state.isRecording) {
+        speechSourceStatus.classList.add('is-processing');
+      } else if (state.speechInput.sourceType) {
+        speechSourceStatus.classList.add('is-ready');
       }
 
-      resultEl.textContent = data.result || data.text || JSON.stringify(data);
-      await loadHistory();
-    } catch (err) {
-      resultEl.className = 'error';
-      resultEl.textContent = '翻译失败：' + err.message;
-    } finally {
-      buttons.forEach(b => b.disabled = false);
-      document.getElementById('lang-select').style.display = 'none';
-    }
-  }
+      if (isText && activeMode) {
+        textInput.placeholder = getMessage(activeMode.source_lang === 'zh' ? 'text.placeholder.zh' : 'text.placeholder.en');
+        textHint.textContent = getMessage('text.input_hint');
+        controlCaption.textContent = getMessage('text.input_saved');
+        outputCaption.textContent = getMessage('text.result_empty');
+      } else if (isSpeech) {
+        textHint.textContent = '';
+        controlCaption.textContent = getMessage('speech.input_hint');
+        outputCaption.textContent = getMessage('speech.source_selected');
+      } else {
+        textInput.placeholder = getMessage('text.non_text_mode_pending');
+        textHint.textContent = getMessage('text.non_text_mode_pending');
+        controlCaption.textContent = getMessage('text.non_text_mode_pending');
+        outputCaption.textContent = getMessage('text.non_text_mode_pending');
+      }
 
-  document.querySelectorAll('.btn-mode').forEach(btn => {
-    btn.addEventListener('click', () => runTranslate(Number(btn.dataset.mode)));
-  });
-
-  /* ── Recording ── */
-
-  let recording = false;
-  let recordTimer = null;
-  let recordStartTime = null;
-  const MAX_RECORD_SECONDS = 180;
-
-  function formatTime(seconds) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-
-  function updateRecordTimer() {
-    if (!recording || !recordStartTime) return;
-    const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
-    const remaining = Math.max(0, MAX_RECORD_SECONDS - elapsed);
-    const statusEl = document.getElementById('record-status');
-    statusEl.textContent = `正在录音 ${formatTime(elapsed)} / ${formatTime(MAX_RECORD_SECONDS)}`;
-    if (remaining <= 10 && remaining > 0) {
-      statusEl.style.color = '#ff4d4f';
-    }
-    if (remaining === 0) {
-      statusEl.textContent = '录音时长已达上限，请稍候…';
-      return;
-    }
-    recordTimer = setTimeout(updateRecordTimer, 1000);
-  }
-
-  function stopRecordTimer() {
-    if (recordTimer) {
-      clearTimeout(recordTimer);
-      recordTimer = null;
-    }
-    recordStartTime = null;
-    const statusEl = document.getElementById('record-status');
-    statusEl.style.color = '';
-  }
-
-  document.getElementById('btn-record').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-record');
-    const statusEl = document.getElementById('record-status');
-
-    // 录音中：等待后端完成（Flask 同步请求，无法中断）
-    if (recording) {
-      statusEl.textContent = '正在停止录音，请稍候…';
-      return;
+      historyCaption.textContent = getMessage('history.recent_caption');
+      renderRecordingsList();
     }
 
-    recording = true;
-    btn.disabled = false;
-    btn.textContent = '录音中…';
-    statusEl.style.color = '';
-    statusEl.textContent = '正在录音 0:00 / 3:00';
-    recordStartTime = Date.now();
-    updateRecordTimer();
-
-    try {
-      const data = await apiFetch('/api/record', { method: 'POST' });
-      stopRecordTimer();
-      statusEl.textContent = data.message || '录音完成';
-      showToast('录音已保存');
-      await loadRecordings();
-    } catch (err) {
-      stopRecordTimer();
-      statusEl.textContent = '录音失败：' + err.message;
-      showToast('录音失败：' + err.message, 4000);
-    } finally {
-      recording = false;
-      btn.disabled = false;
-      btn.textContent = '开始录音';
+    function renderFlowStatus() {
+      const note = document.getElementById('text-flow-status');
+      note.className = 'status-note';
+      if (state.flowStatus.tone === 'processing') {
+        note.classList.add('is-processing');
+      } else if (state.flowStatus.tone === 'error') {
+        note.classList.add('is-error');
+      } else if (state.flowStatus.tone === 'ready') {
+        note.classList.add('is-ready');
+      }
+      note.textContent = state.flowStatus.raw || getMessage(state.flowStatus.key);
     }
-  });
 
-  /* ── Export buttons ── */
+    function renderActionButtons() {
+      const activeMode = getActiveMode();
+      const startButton = document.getElementById('text-start-button');
+      const resetButton = document.getElementById('text-reset-button');
+      const saveButton = document.getElementById('text-save-button');
+      const canStartSpeech = Boolean(state.speechInput.sourceType) && !state.isRecording;
+      const hasAnyState = Boolean(state.textInput || state.speechInput.sourceType || state.lastResult);
 
-  document.getElementById('btn-export-history').addEventListener('click', () => {
-    downloadAudio('/api/history/export', 'history_export.zip');
-  });
+      startButton.textContent = getMessage('text.start');
+      resetButton.textContent = getMessage('text.reset');
+      saveButton.textContent = isSpeechMode(activeMode) ? getMessage('speech.save_recording') : getMessage('text.save_input');
 
-  document.getElementById('btn-export-recordings').addEventListener('click', () => {
-    downloadAudio('/api/recordings/export', 'recordings_export.zip');
-  });
+      if (isTextMode(activeMode)) {
+        startButton.disabled = state.isSubmitting;
+        resetButton.disabled = state.isSubmitting && !hasAnyState;
+        saveButton.disabled = false;
+        return;
+      }
 
-  /* ── Init ── */
+      if (isSpeechMode(activeMode)) {
+        startButton.disabled = state.isSubmitting || !canStartSpeech;
+        resetButton.disabled = state.isSubmitting || state.isRecording;
+        saveButton.disabled = state.isSubmitting || state.isRecording || !['record', 'upload'].includes(state.speechInput.sourceType);
+        return;
+      }
 
-  loadStatus();
-  loadHistory();
-  loadRecordings();
-</script>
+      startButton.disabled = true;
+      resetButton.disabled = !hasAnyState;
+      saveButton.disabled = true;
+    }
+
+    function renderResult() {
+      const activeMode = getActiveMode();
+      const empty = document.getElementById('text-result-empty');
+      const result = document.getElementById('text-result');
+      const sourceAudioBlock = document.getElementById('result-source-audio-block');
+      const sourceBlock = document.getElementById('result-source-block');
+      const outputBlock = document.getElementById('result-output-block');
+      const audioBlock = document.getElementById('result-audio-block');
+      const copyButton = document.getElementById('text-copy-button');
+      const downloadLink = document.getElementById('text-download-link');
+      const sourceAudioPlayer = document.getElementById('result-source-audio-player');
+      const outputAudioPlayer = document.getElementById('result-audio-player');
+
+      if (!activeMode || !state.lastResult || state.lastResult.modeKey !== activeMode.mode_key) {
+        empty.hidden = false;
+        empty.textContent = isSpeechMode(activeMode) ? getMessage('speech.input_hint') : getMessage('text.result_empty');
+        result.hidden = true;
+        sourceAudioPlayer.removeAttribute('src');
+        outputAudioPlayer.removeAttribute('src');
+        document.getElementById('result-source-text').textContent = '';
+        document.getElementById('result-output-text').textContent = '';
+        copyButton.hidden = true;
+        downloadLink.hidden = true;
+        return;
+      }
+
+      const payload = state.lastResult.payload.result;
+      const record = state.lastResult.payload.record;
+      const inputAudioUrl = record?.artifacts?.input_audio_url || '';
+      const outputAudioUrl = payload.output_audio_url || '';
+      const outputText = payload.output_text || '';
+      const sourceText = payload.source_text || '';
+
+      sourceAudioBlock.hidden = !inputAudioUrl;
+      sourceBlock.hidden = !sourceText;
+      outputBlock.hidden = !outputText;
+      audioBlock.hidden = !outputAudioUrl;
+      copyButton.hidden = !outputText;
+      downloadLink.hidden = !outputAudioUrl;
+
+      sourceAudioPlayer.src = inputAudioUrl;
+      outputAudioPlayer.src = outputAudioUrl;
+      document.getElementById('result-source-text').textContent = sourceText;
+      document.getElementById('result-output-text').textContent = outputText;
+      downloadLink.href = outputAudioUrl || '#';
+      downloadLink.textContent = getMessage('text.download_audio');
+      copyButton.textContent = getMessage('text.copy_output');
+
+      empty.hidden = true;
+      result.hidden = false;
+    }
+
+    function openHistoryView(recordId = null) {
+      state.history.focusId = recordId;
+      changeActiveView('history');
+    }
+
+    function buildRecentHistoryCard(item) {
+      const card = document.createElement('article');
+      card.className = 'history-card';
+
+      const head = document.createElement('div');
+      head.className = 'history-head';
+
+      const textBlock = document.createElement('div');
+      const title = document.createElement('p');
+      title.className = 'history-title';
+      title.textContent = getLeafLabel(item.mode_key);
+      const meta = document.createElement('p');
+      meta.className = 'history-meta';
+      meta.textContent = `#${item.id} · ${item.created_at}`;
+      textBlock.append(title, meta);
+
+      const kindPill = document.createElement('span');
+      kindPill.className = 'meta-pill';
+      kindPill.textContent = item.output_kind === 'audio' ? getMessage('history.output_audio') : getMessage('history.output_text');
+      head.append(textBlock, kindPill);
+
+      const sourcePreview = clipText(item.source_preview);
+      const outputPreview = clipText(item.output_preview) || getMessage('history.output_audio_only');
+      card.append(
+        head,
+        createHistoryPreview('history.source_preview', sourcePreview, '--'),
+        createHistoryPreview('history.output_preview', outputPreview, '--'),
+      );
+
+      if (item.artifact_urls?.output_audio_url) {
+        card.appendChild(createHistoryAudioBlock('history.output_audio', item.artifact_urls.output_audio_url));
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'history-actions';
+      actions.appendChild(createActionButton(getMessage('history.open_item'), () => openHistoryView(item.id)));
+      card.appendChild(actions);
+
+      return card;
+    }
+
+    function buildHistoryItem(item) {
+      const details = document.createElement('details');
+      details.className = 'history-item';
+      details.open = state.history.focusId === item.id;
+
+      const summary = document.createElement('summary');
+      summary.className = 'history-summary';
+      const summaryText = document.createElement('div');
+      const title = document.createElement('p');
+      title.className = 'history-title';
+      title.textContent = getLeafLabel(item.mode_key);
+      const meta = document.createElement('p');
+      meta.className = 'history-meta';
+      meta.textContent = `#${item.id} · ${item.created_at} · ${getLanguageLabel(item.source_lang)} → ${getLanguageLabel(item.target_lang)}`;
+      summaryText.append(title, meta);
+
+      const summaryPill = document.createElement('span');
+      summaryPill.className = 'meta-pill';
+      summaryPill.textContent = getMessage(`nav.${item.group_key}`) || item.group_key;
+      summary.append(summaryText, summaryPill);
+      details.appendChild(summary);
+
+      const body = document.createElement('div');
+      body.className = 'history-body';
+      const sourcePreview = clipText(item.values?.source_text, 160);
+      const outputPreview = clipText(item.values?.output_text, 160) || (item.artifact_urls?.output_audio_url ? getMessage('history.output_audio_only') : '--');
+      body.append(
+        createHistoryPreview('history.source_preview', sourcePreview, '--'),
+        createHistoryPreview('history.output_preview', outputPreview, '--'),
+      );
+
+      const audioGrid = document.createElement('div');
+      audioGrid.className = 'history-audio-grid';
+      if (item.artifact_urls?.input_audio_url) {
+        audioGrid.appendChild(createHistoryAudioBlock('history.input_audio', item.artifact_urls.input_audio_url));
+      }
+      if (item.artifact_urls?.output_audio_url) {
+        audioGrid.appendChild(createHistoryAudioBlock('history.output_audio', item.artifact_urls.output_audio_url));
+      }
+      if (audioGrid.children.length) {
+        body.appendChild(audioGrid);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'history-actions';
+      const artifactActions = [
+        ['history.manifest', item.artifact_urls?.manifest_url],
+        ['history.input_text', item.artifact_urls?.input_text_url],
+        ['history.output_text', item.artifact_urls?.output_text_url],
+        ['history.input_audio', item.artifact_urls?.input_audio_url],
+        ['history.output_audio', item.artifact_urls?.output_audio_url],
+      ];
+      artifactActions.forEach(([labelKey, href]) => {
+        if (href) {
+          actions.appendChild(createActionLink(getMessage(labelKey), href));
+        }
+      });
+      const deleteButton = createActionButton(getMessage('history.delete'), () => handleDeleteHistory(item.id));
+      deleteButton.disabled = state.history.deletingId === item.id;
+      actions.appendChild(deleteButton);
+      body.appendChild(actions);
+
+      details.appendChild(body);
+      return details;
+    }
+
+    function renderRecentHistory() {
+      const list = document.getElementById('recent-history-list');
+      const count = document.getElementById('recent-history-count');
+      list.innerHTML = '';
+      count.textContent = `${state.history.recent.length} / ${state.constraints?.max_history ?? 5}`;
+
+      if (state.history.recentState === 'loading') {
+        list.appendChild(createMessageNode(getMessage('history.recent_loading'), 'history-placeholder'));
+        return;
+      }
+
+      if (state.history.recentState === 'error') {
+        list.appendChild(createMessageNode(getMessage('history.recent_failed'), 'history-placeholder'));
+        return;
+      }
+
+      if (!state.history.recent.length) {
+        list.appendChild(createMessageNode(getMessage('history.recent_empty'), 'history-placeholder'));
+        return;
+      }
+
+      state.history.recent.forEach((item) => {
+        list.appendChild(buildRecentHistoryCard(item));
+      });
+    }
+
+    function renderHistoryManagement() {
+      const section = document.getElementById('history-full-section');
+      const caption = document.getElementById('history-full-caption');
+      const list = document.getElementById('history-full-list');
+      const count = document.getElementById('history-full-count');
+      caption.textContent = getMessage('history.full_caption');
+      count.textContent = `${state.history.full.length} / ${state.constraints?.max_history ?? 5}`;
+
+      if (section.hidden) {
+        return;
+      }
+
+      list.innerHTML = '';
+      if (state.history.fullState === 'loading') {
+        list.appendChild(createMessageNode(getMessage('history.loading')));
+        return;
+      }
+
+      if (state.history.fullState === 'error') {
+        list.appendChild(createMessageNode(getMessage('history.failed')));
+        return;
+      }
+
+      if (!state.history.full.length) {
+        list.appendChild(createMessageNode(getMessage('history.empty')));
+        return;
+      }
+
+      state.history.full.forEach((item) => {
+        list.appendChild(buildHistoryItem(item));
+      });
+    }
+
+    function renderStatus() {
+      const labelKey = state.healthOk ? 'status.ready' : 'status.error';
+      const label = getMessage(labelKey);
+      document.getElementById('summary-status-label').textContent = label;
+      document.getElementById('footer-status-label').textContent = label;
+      document.getElementById('summary-status').classList.toggle('is-error', !state.healthOk);
+      document.getElementById('footer-status').classList.toggle('is-error', !state.healthOk);
+    }
+
+    function renderShell() {
+      setTextByKey();
+      renderNav();
+      renderBreadcrumb();
+      renderSummary();
+      renderUtilityPanels();
+      renderViewVisibility();
+      renderModePicker();
+      renderInputPanel();
+      renderActionButtons();
+      renderFlowStatus();
+      renderResult();
+      renderRecentHistory();
+      renderHistoryManagement();
+      renderStatus();
+      document.documentElement.lang = state.locale;
+    }
+
+    function toggleLocale() {
+      setLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN');
+    }
+
+    function encodeWav(chunks, sampleRate) {
+      const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const samples = new Float32Array(totalLength);
+      let offset = 0;
+      chunks.forEach((chunk) => {
+        samples.set(chunk, offset);
+        offset += chunk.length;
+      });
+
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+      const writeString = (position, value) => {
+        for (let index = 0; index < value.length; index += 1) {
+          view.setUint8(position + index, value.charCodeAt(index));
+        }
+      };
+
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + samples.length * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, samples.length * 2, true);
+
+      let sampleOffset = 44;
+      samples.forEach((sample) => {
+        const clamped = Math.max(-1, Math.min(1, sample));
+        view.setInt16(sampleOffset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+        sampleOffset += 2;
+      });
+
+      return new Blob([buffer], { type: 'audio/wav' });
+    }
+
+    function stopRecordingTimer() {
+      if (state.recordTimerId !== null) {
+        window.clearInterval(state.recordTimerId);
+        state.recordTimerId = null;
+      }
+    }
+
+    async function finishRecording(reason = 'manual') {
+      if (!state.recordingRuntime) {
+        return;
+      }
+
+      const runtime = state.recordingRuntime;
+      state.recordingRuntime = null;
+      state.isRecording = false;
+      stopRecordingTimer();
+
+      runtime.processor.disconnect();
+      runtime.source.disconnect();
+      runtime.stream.getTracks().forEach((track) => track.stop());
+      await runtime.audioContext.close();
+
+      const blob = encodeWav(runtime.chunks, runtime.sampleRate);
+      const previewUrl = URL.createObjectURL(blob);
+      const durationSeconds = runtime.chunks.reduce((sum, chunk) => sum + chunk.length, 0) / runtime.sampleRate;
+      setSpeechInputSource({
+        sourceType: 'record',
+        blob,
+        fileName: reason === 'limit' ? 'browser-recording-limit.wav' : 'browser-recording.wav',
+        previewUrl,
+        previewUrlOwned: true,
+        durationSeconds,
+      });
+      setFlowStatus('speech.recording_status_ready', 'ready');
+      renderShell();
+    }
+
+    async function handleRecordStart() {
+      if (state.isRecording) {
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setFlowStatus('speech.recording_unsupported', 'error');
+        return;
+      }
+
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) {
+        setFlowStatus('speech.recording_unsupported', 'error');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const audioContext = new AudioContextCtor();
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        const chunks = [];
+        processor.onaudioprocess = (event) => {
+          if (!state.isRecording) {
+            return;
+          }
+          chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+        };
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+
+        cleanupSpeechPreviewUrl();
+        state.speechInput = { sourceType: '', blob: null, fileName: '', previewUrl: '', previewUrlOwned: false, recordingId: null, durationSeconds: 0 };
+        state.recordingRuntime = { stream, audioContext, source, processor, chunks, sampleRate: audioContext.sampleRate };
+        state.isRecording = true;
+        state.recordSeconds = 0;
+        setFlowStatus('speech.recording_status_active', 'processing');
+        state.recordTimerId = window.setInterval(() => {
+          state.recordSeconds += 1;
+          const maxSeconds = state.constraints?.max_record_seconds || 180;
+          if (state.recordSeconds >= maxSeconds) {
+            finishRecording('limit');
+            return;
+          }
+          renderShell();
+        }, 1000);
+        renderShell();
+      } catch (_error) {
+        setFlowStatus('speech.recording_permission_denied', 'error');
+      }
+    }
+
+    async function handleRecordStop() {
+      await finishRecording('manual');
+    }
+
+    async function loadRecordings() {
+      state.recordingsState = 'loading';
+      renderRecordingsList();
+      try {
+        const response = await fetch('/api/recordings', { headers: { Accept: 'application/json' } });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        state.recordings = payload.items || [];
+        state.recordingsState = 'ready';
+      } catch (_error) {
+        state.recordings = [];
+        state.recordingsState = 'error';
+      }
+      renderRecordingsList();
+    }
+
+    async function loadRecentHistory() {
+      state.history.recentState = 'loading';
+      renderRecentHistory();
+      try {
+        const response = await fetch('/api/history/recent', { headers: { Accept: 'application/json' } });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        state.history.recent = payload.items || [];
+        state.history.recentState = 'ready';
+      } catch (_error) {
+        state.history.recent = [];
+        state.history.recentState = 'error';
+      }
+      renderRecentHistory();
+    }
+
+    async function loadFullHistory() {
+      state.history.fullState = 'loading';
+      renderHistoryManagement();
+      try {
+        const response = await fetch('/api/history', { headers: { Accept: 'application/json' } });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        state.history.full = payload.items || [];
+        state.history.fullState = 'ready';
+      } catch (_error) {
+        state.history.full = [];
+        state.history.fullState = 'error';
+      }
+
+      if (state.history.focusId !== null && !state.history.full.some((item) => item.id === state.history.focusId)) {
+        state.history.focusId = null;
+      }
+      renderHistoryManagement();
+      renderSummary();
+    }
+
+    async function loadHistoryData() {
+      await Promise.all([loadRecentHistory(), loadFullHistory()]);
+    }
+
+    async function loadBootstrap() {
+      const response = await fetch('/api/bootstrap', { headers: { Accept: 'application/json' } });
+      if (!response.ok) {
+        throw new Error(`bootstrap failed: ${response.status}`);
+      }
+      const payload = await response.json();
+      state.locale = payload.app.default_locale;
+      state.i18n = payload.i18n;
+      state.constraints = payload.constraints;
+      state.groupedModes = groupModes(payload.modes);
+      state.activeModeKey = (state.groupedModes.get(state.activeGroupKey) || [])[0]?.mode_key || '';
+      setDefaultFlowStatus();
+      renderShell();
+    }
+
+    async function loadHealth() {
+      try {
+        const response = await fetch('/api/health', { headers: { Accept: 'application/json' } });
+        state.healthOk = response.ok;
+      } catch (_error) {
+        state.healthOk = false;
+      }
+      renderStatus();
+    }
+
+    async function handleTextUpload(event) {
+      const activeMode = getActiveMode();
+      if (!isTextMode(activeMode)) {
+        setFlowStatus('text.non_text_mode_pending', 'info');
+        event.target.value = '';
+        return;
+      }
+
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      if (!file.name.toLowerCase().endsWith('.txt')) {
+        setFlowStatus('text.upload_invalid', 'error');
+        event.target.value = '';
+        return;
+      }
+
+      try {
+        state.textInput = await file.text();
+        document.getElementById('text-input').value = state.textInput;
+        setFlowStatus('text.upload_loaded', 'ready');
+      } catch (_error) {
+        setFlowStatus('text.upload_failed', 'error');
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    async function handleSpeechUpload(event) {
+      const activeMode = getActiveMode();
+      if (!isSpeechMode(activeMode)) {
+        setFlowStatus('text.non_text_mode_pending', 'info');
+        event.target.value = '';
+        return;
+      }
+
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+
+      const validType = file.name.toLowerCase().endsWith('.wav') || file.type === 'audio/wav';
+      if (!validType) {
+        setFlowStatus('speech.upload_invalid', 'error');
+        event.target.value = '';
+        return;
+      }
+
+      try {
+        const previewUrl = URL.createObjectURL(file);
+        setSpeechInputSource({
+          sourceType: 'upload',
+          blob: file,
+          fileName: file.name,
+          previewUrl,
+          previewUrlOwned: true,
+          durationSeconds: 0,
+        });
+        resetResultForModeChange();
+        setFlowStatus('speech.source_selected', 'ready', `${getMessage('speech.source_selected')} ${file.name}`);
+        renderShell();
+      } catch (_error) {
+        setFlowStatus('speech.upload_failed', 'error');
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    function handleClear() {
+      state.textInput = '';
+      document.getElementById('text-input').value = '';
+      resetResultForModeChange();
+      setDefaultFlowStatus();
+      renderShell();
+    }
+
+    function handleSpeechClear() {
+      clearPendingReuseRecording();
+      clearSpeechInputSource();
+      resetResultForModeChange();
+      setDefaultFlowStatus();
+      renderShell();
+    }
+
+    function handleReset() {
+      clearPendingReuseRecording();
+      state.textInput = '';
+      clearSpeechInputSource();
+      resetResultForModeChange();
+      setDefaultFlowStatus();
+      renderShell();
+    }
+
+    async function handleSaveInput() {
+      const activeMode = getActiveMode();
+      if (isTextMode(activeMode)) {
+        setFlowStatus('text.input_saved', 'ready');
+        return;
+      }
+
+      if (!isSpeechMode(activeMode) || !['record', 'upload'].includes(state.speechInput.sourceType) || !state.speechInput.blob) {
+        setFlowStatus('speech.input_required', 'error');
+        return;
+      }
+
+      state.isSubmitting = true;
+      renderActionButtons();
+      try {
+        const formData = new FormData();
+        formData.append('input_audio', new File([state.speechInput.blob], state.speechInput.fileName || 'recording.wav', { type: 'audio/wav' }));
+        const response = await fetch('/api/recordings', {
+          method: 'POST',
+          body: formData,
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        const recording = payload.recording;
+        await loadRecordings();
+        setSpeechInputSource({
+          sourceType: 'recording',
+          previewUrl: recording.audio_url,
+          previewUrlOwned: false,
+          recordingId: recording.id,
+          durationSeconds: recording.duration_seconds || 0,
+          fileName: `recording-${recording.id}.wav`,
+        });
+        setFlowStatus('speech.save_recording_success', 'ready', `${getMessage('speech.save_recording_success')} #${recording.id}`);
+      } catch (error) {
+        setFlowStatus('', 'error', error.message || getMessage('speech.save_recording_failed'));
+      } finally {
+        state.isSubmitting = false;
+        renderShell();
+      }
+    }
+
+    async function submitTextConversion(activeMode) {
+      const inputText = document.getElementById('text-input').value.trim();
+      state.textInput = inputText;
+      if (!inputText) {
+        setFlowStatus('text.input_required', 'error');
+        renderActionButtons();
+        return;
+      }
+
+      const response = await fetch('/api/conversions/text', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode_key: activeMode.mode_key,
+          input_text: inputText,
+          persist_input: true,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      state.lastResult = { modeKey: activeMode.mode_key, payload };
+      await loadHistoryData();
+      setFlowStatus('text.result_ready', 'ready');
+    }
+
+    async function submitSpeechConversion(activeMode) {
+      if (!state.speechInput.sourceType) {
+        setFlowStatus('speech.input_required', 'error');
+        renderActionButtons();
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('mode_key', activeMode.mode_key);
+      formData.append('persist_input', 'true');
+      if (state.speechInput.sourceType === 'recording' && state.speechInput.recordingId !== null) {
+        formData.append('recording_id', String(state.speechInput.recordingId));
+      } else if (state.speechInput.blob) {
+        formData.append('input_audio', new File([state.speechInput.blob], state.speechInput.fileName || 'speech-input.wav', { type: 'audio/wav' }));
+      } else {
+        setFlowStatus('speech.input_required', 'error');
+        renderActionButtons();
+        return;
+      }
+
+      const response = await fetch('/api/conversions/speech', {
+        method: 'POST',
+        body: formData,
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      state.lastResult = { modeKey: activeMode.mode_key, payload };
+      await loadHistoryData();
+      setFlowStatus('speech.result_ready', 'ready');
+    }
+
+    async function handleStart() {
+      const activeMode = getActiveMode();
+      if (!activeMode || state.activeKind !== 'group') {
+        setFlowStatus('text.non_text_mode_pending', 'info');
+        return;
+      }
+
+      state.isSubmitting = true;
+      renderActionButtons();
+      setFlowStatus(isSpeechMode(activeMode) ? 'speech.processing' : 'text.processing', 'processing');
+
+      try {
+        if (isTextMode(activeMode)) {
+          await submitTextConversion(activeMode);
+        } else {
+          await submitSpeechConversion(activeMode);
+        }
+      } catch (error) {
+        state.lastResult = null;
+        setFlowStatus('', 'error', error.message || getMessage('status.error'));
+      } finally {
+        state.isSubmitting = false;
+        renderShell();
+      }
+    }
+
+    async function handleDeleteHistory(recordId) {
+      if (!window.confirm(getMessage('history.delete_confirm'))) {
+        return;
+      }
+
+      state.history.deletingId = recordId;
+      renderHistoryManagement();
+      try {
+        const response = await fetch(`/api/history/${recordId}`, {
+          method: 'DELETE',
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        if (state.lastResult?.payload?.record?.id === recordId) {
+          state.lastResult = null;
+        }
+        if (state.history.focusId === recordId) {
+          state.history.focusId = null;
+        }
+        await loadHistoryData();
+        setFlowStatus('history.delete_success', 'ready', `${getMessage('history.delete_success')} #${recordId}`);
+      } catch (error) {
+        setFlowStatus('', 'error', error.message || getMessage('history.delete_failed'));
+      } finally {
+        state.history.deletingId = null;
+        renderShell();
+      }
+    }
+
+    async function handleCopyOutput() {
+      const outputText = document.getElementById('result-output-text').textContent;
+      if (!outputText) {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(outputText);
+        setFlowStatus('text.copy_success', 'ready');
+      } catch (_error) {
+        setFlowStatus('text.copy_failed', 'error');
+      }
+    }
+
+    document.getElementById('header-language-button').addEventListener('click', toggleLocale);
+    document.getElementById('header-help-button').addEventListener('click', () => toggleUtilityPanel('help'));
+    document.getElementById('header-settings-button').addEventListener('click', () => toggleUtilityPanel('settings'));
+    document.getElementById('text-input').addEventListener('input', (event) => {
+      state.textInput = event.target.value;
+    });
+    document.getElementById('text-upload-input').addEventListener('change', handleTextUpload);
+    document.getElementById('text-clear-button').addEventListener('click', handleClear);
+    document.getElementById('speech-upload-input').addEventListener('change', handleSpeechUpload);
+    document.getElementById('speech-clear-button').addEventListener('click', handleSpeechClear);
+    document.getElementById('speech-record-button').addEventListener('click', handleRecordStart);
+    document.getElementById('speech-stop-button').addEventListener('click', handleRecordStop);
+    document.getElementById('text-reset-button').addEventListener('click', handleReset);
+    document.getElementById('text-save-button').addEventListener('click', handleSaveInput);
+    document.getElementById('text-start-button').addEventListener('click', handleStart);
+    document.getElementById('text-copy-button').addEventListener('click', handleCopyOutput);
+    document.getElementById('history-view-all-button').addEventListener('click', () => openHistoryView());
+    document.getElementById('history-refresh-button').addEventListener('click', () => loadHistoryData());
+    window.addEventListener('beforeunload', () => {
+      cleanupSpeechPreviewUrl();
+      stopRecordingTimer();
+    });
+
+    loadBootstrap()
+      .then(() => Promise.all([loadHealth(), loadRecordings(), loadHistoryData()]))
+      .catch((error) => {
+        state.healthOk = false;
+        setFlowStatus('', 'error', error.message || 'bootstrap failed');
+        renderShell();
+      });
+  </script>
 </body>
 </html>
