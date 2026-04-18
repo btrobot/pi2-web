@@ -4,12 +4,15 @@
 import io
 import os
 import zipfile
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import ANY, MagicMock, patch
 
 # 2. Third-party
 import pytest
+from werkzeug.datastructures import FileStorage
 
 # 3. Local
+from api.audio_ingest import AudioIngressError, stage_browser_wav_upload
 from app.mode_registry import get_mode_definition, list_mode_definitions
 from api.app import create_app
 from storage.history import HistoryManager
@@ -85,15 +88,19 @@ def test_bootstrap_returns_atomic_contract(client, mock_config):
         assert "id" not in mode
 
 
-def test_bootstrap_i18n_contains_exact_frozen_shell_keys(client):
+def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
     resp = client.get("/api/bootstrap")
     data = resp.get_json()
 
-    expected_keys = {
+    required_keys = {
         "header.title",
         "header.user_settings",
         "header.help",
         "header.language_switch",
+        "a11y.primary_navigation",
+        "a11y.breadcrumb",
+        "a11y.current_mode_summary",
+        "a11y.mode_picker",
         "nav.same_text_to_speech",
         "nav.same_speech_to_text",
         "nav.cross_text_to_speech",
@@ -107,13 +114,155 @@ def test_bootstrap_i18n_contains_exact_frozen_shell_keys(client):
         "status.processing",
         "status.error",
         "footer.constraints_hint",
+        "panel.input",
+        "panel.control",
+        "panel.output",
+        "panel.history",
+        "panel.history_pending",
+        "panel.help",
+        "panel.settings",
+        "help.caption",
+        "help.text_title",
+        "help.text_desc",
+        "help.speech_title",
+        "help.speech_desc",
+        "help.history_title",
+        "help.history_desc",
+        "help.settings_note",
+        "settings.caption",
+        "settings.locale_label",
+        "settings.locale_hint",
+        "settings.locale_zh",
+        "settings.locale_en",
+        "settings.current_view",
+        "settings.constraints",
+        "settings.max_record_seconds",
+        "settings.max_history",
+        "settings.max_recordings",
+        "common.language.zh",
+        "common.language.en",
+        "common.input_type.text",
+        "common.input_type.audio",
+        "common.output_type.text",
+        "common.output_type.audio",
+        "common.unit_seconds",
+        "common.unit_sets",
+        "history.recent_caption",
+        "history.recent_loading",
+        "history.recent_empty",
+        "history.recent_failed",
+        "history.failed",
+        "history.view_all",
+        "history.full_title",
+        "history.full_caption",
+        "history.loading",
+        "history.empty",
+        "history.refresh",
+        "history.export",
+        "history.open_item",
+        "history.delete",
+        "history.delete_confirm",
+        "history.delete_success",
+        "history.delete_failed",
+        "history.manifest",
+        "history.input_text",
+        "history.output_text",
+        "history.input_audio",
+        "history.output_audio",
+        "history.output_audio_only",
+        "history.source_preview",
+        "history.output_preview",
+        "text.input_label",
+        "text.upload_txt",
+        "text.clear",
+        "text.start",
+        "text.reset",
+        "text.save_input",
+        "text.input_hint",
+        "text.input_saved",
+        "text.input_required",
+        "text.result_empty",
+        "text.result_source",
+        "text.result_output",
+        "text.result_audio",
+        "text.copy_output",
+        "text.download_audio",
+        "text.processing",
+        "text.result_ready",
+        "text.speech_pending",
+        "text.non_text_mode_pending",
+        "text.mode_picker",
+        "speech.input_label",
+        "speech.upload_wav",
+        "speech.record_start",
+        "speech.record_stop",
+        "speech.clear_audio",
+        "speech.input_hint",
+        "speech.source_audio",
+        "speech.source_selected",
+        "speech.input_required",
+        "speech.processing",
+        "speech.result_ready",
+        "speech.save_recording",
+        "speech.save_recording_success",
+        "speech.save_recording_failed",
+        "speech.recording_permission_denied",
+        "speech.recording_unsupported",
+        "speech.upload_invalid",
+        "speech.upload_failed",
+        "speech.recording_status_idle",
+        "speech.recording_status_active",
+        "speech.recording_status_ready",
+        "speech.recordings_label",
+        "speech.recordings_loading",
+        "speech.recordings_failed",
+        "speech.no_recordings",
+        "speech.use_recording",
+        "speech.recording_selected",
     }
 
     assert set(data["i18n"].keys()) == {"zh-CN", "en-US"}
     for locale in ("zh-CN", "en-US"):
         messages = data["i18n"][locale]
-        assert set(messages.keys()) == expected_keys
+        assert required_keys <= set(messages.keys())
         assert all(isinstance(value, str) and value for value in messages.values())
+
+
+def test_bootstrap_i18n_contains_mode_labels_for_all_leaf_modes(client):
+    resp = client.get("/api/bootstrap")
+    data = resp.get_json()
+
+    for locale in ("zh-CN", "en-US"):
+        messages = data["i18n"][locale]
+        for mode in list_mode_definitions():
+            key = f"mode.{mode.mode_key}"
+            assert key in messages
+            assert isinstance(messages[key], str) and messages[key]
+
+
+def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
+    resp = client.get("/api/bootstrap")
+    data = resp.get_json()
+
+    zh = data["i18n"]["zh-CN"]
+    en = data["i18n"]["en-US"]
+
+    assert zh["header.title"] == "语音文本处理中心"
+    assert zh["nav.same_text_to_speech"] == "同语言文字转语音"
+    assert zh["text.start"] == "开始转换"
+    assert zh["speech.record_start"] == "开始录音"
+    assert zh["history.view_all"] == "查看全部历史"
+    assert zh["history.delete"] == "删除记录"
+    assert zh["panel.help"] == "帮助面板"
+    assert zh["settings.locale_label"] == "界面语言"
+    assert zh["mode.tts_zh_zh"] == "中文文字转中文语音"
+    assert "?" not in zh["header.title"]
+    assert en["header.language_switch"] == "中文"
+    assert en["speech.use_recording"] == "Use recording"
+    assert en["history.full_title"] == "History management"
+    assert en["history.export"] == "Export history"
+    assert en["panel.settings"] == "Settings panel"
+    assert en["settings.locale_en"] == "English UI"
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +617,101 @@ def test_speech_conversion_requires_exactly_one_audio_source(client, tmp_audio_f
     assert resp_both.get_json()["error"] == "provide exactly one of input_audio or recording_id"
 
 
+def test_speech_conversion_rejects_upload_without_filename(client):
+    resp = client.post(
+        "/api/conversions/speech",
+        data={
+            "mode_key": "asr_zh_zh",
+            "input_audio": (io.BytesIO(b"fake"), ""),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "input_audio filename is required"
+
+
+def test_speech_conversion_rejects_non_wav_upload_with_stable_error(client, app):
+    app.config["PIPELINE_FN"] = MagicMock()
+
+    resp = client.post(
+        "/api/conversions/speech",
+        data={
+            "mode_key": "asr_mt_zh_en",
+            "input_audio": (io.BytesIO(b"not-a-wav"), "input.wav"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "input_audio must be a valid WAV file"
+    app.config["PIPELINE_FN"].assert_not_called()
+
+
+def test_speech_conversion_rejects_zero_byte_wav_upload(client, app):
+    app.config["PIPELINE_FN"] = MagicMock()
+
+    resp = client.post(
+        "/api/conversions/speech",
+        data={
+            "mode_key": "asr_mt_zh_en",
+            "input_audio": (io.BytesIO(b""), "empty.wav"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "input_audio must be a valid WAV file"
+    app.config["PIPELINE_FN"].assert_not_called()
+
+
+def test_speech_conversion_rejects_upload_longer_than_max_record_seconds(client, app, long_tmp_audio_file, mock_config):
+    app.config["PIPELINE_FN"] = MagicMock()
+
+    with long_tmp_audio_file.open("rb") as handle:
+        resp = client.post(
+            "/api/conversions/speech",
+            data={
+                "mode_key": "asr_mt_zh_en",
+                "input_audio": (handle, "too-long.wav"),
+            },
+            content_type="multipart/form-data",
+        )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == _duration_limit_error(mock_config)
+    app.config["PIPELINE_FN"].assert_not_called()
+
+
+def test_stage_browser_wav_upload_cleans_temp_file_on_invalid_input(monkeypatch, tmp_path):
+    created_paths: list[Path] = []
+
+    class _FakeNamedTemporaryFile:
+        def __init__(self, path: Path) -> None:
+            self.name = str(path)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001 - context manager test seam
+            return False
+
+    def _fake_named_temporary_file(*, suffix: str, delete: bool):  # noqa: ARG001
+        path = tmp_path / "bad-upload.wav"
+        created_paths.append(path)
+        return _FakeNamedTemporaryFile(path)
+
+    monkeypatch.setattr("api.audio_ingest.tempfile.NamedTemporaryFile", _fake_named_temporary_file)
+
+    upload = FileStorage(stream=io.BytesIO(b"not-a-wav"), filename="input.wav")
+
+    with pytest.raises(AudioIngressError, match="input_audio must be a valid WAV file"):
+        stage_browser_wav_upload(upload)
+
+    assert created_paths == [tmp_path / "bad-upload.wav"]
+    assert created_paths[0].exists() is False
+
+
 def test_speech_conversion_rejects_non_integer_recording_id(client):
     resp = client.post(
         "/api/conversions/speech",
@@ -599,6 +843,15 @@ def _history_manager(mock_config) -> HistoryManager:
 def _recording_manager(mock_config) -> RecordingManager:
     storage_cfg = mock_config["storage"]
     return RecordingManager(storage_cfg["recordings_dir"], storage_cfg["max_recordings"])
+
+
+def _post_recording_create(client, input_audio) -> object:
+    data = {} if input_audio is None else {"input_audio": input_audio}
+    return client.post("/api/recordings", data=data, content_type="multipart/form-data")
+
+
+def _duration_limit_error(mock_config: dict) -> str:
+    return f"input_audio duration must not exceed {mock_config['audio']['max_record_duration']} seconds"
 
 
 def _seed_history_record(manager: HistoryManager, mode_key: str, index: int, audio_path: str) -> dict:
@@ -775,6 +1028,75 @@ def test_export_history_returns_frozen_zip_structure(client, mock_config, tmp_au
 # ---------------------------------------------------------------------------
 # Recordings
 # ---------------------------------------------------------------------------
+
+
+def test_create_recording_accepts_wav_upload_and_returns_frozen_item(client, mock_config, tmp_audio_file):
+    with tmp_audio_file.open("rb") as handle:
+        resp = _post_recording_create(client, (handle, "recording.wav"))
+
+    assert resp.status_code == 200
+    assert resp.get_json() == {
+        "recording": {
+            "id": 1,
+            "created_at": ANY,
+            "duration_seconds": 1.0,
+            "audio_url": "/api/recordings/1/audio",
+            "reuse": {"recording_id": 1},
+        }
+    }
+
+    manager = _recording_manager(mock_config)
+    stored = manager.get_recording(1)
+    assert stored is not None
+    assert stored["duration_seconds"] == 1.0
+
+    list_resp = client.get("/api/recordings")
+    assert list_resp.status_code == 200
+    assert list_resp.get_json()["items"] == [resp.get_json()["recording"]]
+
+    audio_resp = client.get("/api/recordings/1/audio")
+    assert audio_resp.status_code == 200
+    assert audio_resp.mimetype == "audio/wav"
+    assert audio_resp.data == tmp_audio_file.read_bytes()
+
+
+def test_create_recording_requires_input_audio(client):
+    resp = _post_recording_create(client, None)
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "input_audio is required"
+
+
+def test_create_recording_rejects_upload_without_filename(client):
+    resp = _post_recording_create(client, (io.BytesIO(b"fake"), ""))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "input_audio filename is required"
+
+
+def test_create_recording_rejects_non_wav_upload_with_stable_error(client):
+    resp = _post_recording_create(client, (io.BytesIO(b"not-a-wav"), "recording.wav"))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "input_audio must be a valid WAV file"
+
+
+def test_create_recording_rejects_upload_longer_than_max_record_seconds(client, long_tmp_audio_file, mock_config):
+    with long_tmp_audio_file.open("rb") as handle:
+        resp = _post_recording_create(client, (handle, "too-long.wav"))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == _duration_limit_error(mock_config)
+
+
+def test_create_recording_returns_500_when_storage_save_fails(client, tmp_audio_file):
+    with patch("api.recording_routes.RecordingManager") as mock_manager:
+        mock_manager.return_value.save_recording.side_effect = OSError("disk full")
+        with tmp_audio_file.open("rb") as handle:
+            resp = _post_recording_create(client, (handle, "recording.wav"))
+
+    assert resp.status_code == 500
+    assert resp.get_json()["error"] == "failed to save recording"
 
 
 def test_list_recordings_returns_latest_five_frozen_items(client, mock_config, tmp_audio_file):

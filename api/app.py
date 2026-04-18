@@ -1,13 +1,12 @@
 """Flask 应用工厂 — Pi5 离线翻译系统 HTTP 服务"""
 
 import logging
-import os
-import tempfile
 from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request
 
-from storage.recordings import RecordingManager
+from app.i18n_registry import DEFAULT_LOCALE, SUPPORTED_LOCALES, get_bootstrap_i18n
+from app.mode_registry import list_mode_definitions
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +19,43 @@ _MODE_MAP = {
 }
 
 
+def _build_bootstrap_payload(config: dict[str, Any]) -> dict[str, Any]:
+    audio_cfg = config["audio"]
+    storage_cfg = config["storage"]
+
+    return {
+        "app": {
+            "default_locale": DEFAULT_LOCALE,
+            "supported_locales": list(SUPPORTED_LOCALES),
+        },
+        "constraints": {
+            "max_record_seconds": audio_cfg["max_record_duration"],
+            "max_history": storage_cfg["max_history"],
+            "max_recordings": storage_cfg["max_recordings"],
+        },
+        "modes": [
+            {
+                "mode_key": mode.mode_key,
+                "group_key": mode.group_key,
+                "input_type": mode.input_type,
+                "output_type": mode.output_type,
+                "source_lang": mode.source_lang,
+                "target_lang": mode.target_lang,
+            }
+            for mode in list_mode_definitions()
+        ],
+        "i18n": get_bootstrap_i18n(),
+    }
+
+
 def create_app(config: dict[str, Any]) -> Flask:
     app = Flask(__name__)
     app.config["APP_CONFIG"] = config
 
+    from api.conversion_routes import conversion_bp
     from api.history_routes import history_bp
     from api.recording_routes import recording_bp
+    app.register_blueprint(conversion_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(recording_bp)
 
@@ -45,6 +75,10 @@ def create_app(config: dict[str, Any]) -> Flask:
     @app.route("/api/health", methods=["GET"])
     def health() -> tuple[Response, int]:
         return jsonify({"status": "ok"}), 200
+
+    @app.route("/api/bootstrap", methods=["GET"])
+    def bootstrap() -> tuple[Response, int]:
+        return jsonify(_build_bootstrap_payload(app.config["APP_CONFIG"])), 200
 
     @app.route("/api/translate", methods=["POST"])
     def translate() -> tuple[Response, int]:
@@ -89,30 +123,6 @@ def create_app(config: dict[str, Any]) -> Flask:
         except Exception as e:
             logger.error("翻译失败: mode=%s, error=%s", mode, str(e))
             return jsonify({"error": "翻译失败: " + str(e)}), 500
-
-    @app.route("/api/record", methods=["POST"])
-    def record() -> tuple[Response, int]:
-        cfg = app.config["APP_CONFIG"]
-        from audio import record as audio_record
-
-        storage_cfg = cfg["storage"]
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            audio_record(output_path=tmp_path, device=cfg["audio"]["device"])
-            mgr = RecordingManager(storage_cfg["recordings_dir"], storage_cfg["max_recordings"])
-            rec = mgr.save_recording(tmp_path)
-            return jsonify({"message": "录音完成", "recording": rec}), 200
-        except Exception as e:
-            logger.error("录音失败: error=%s", str(e))
-            return jsonify({"error": "录音失败: " + str(e)}), 500
-        finally:
-            if os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except OSError as e:
-                    logger.warning("临时文件删除失败: path=%s, error=%s", tmp_path, str(e))
 
     logger.info("Flask 应用初始化完成")
     return app

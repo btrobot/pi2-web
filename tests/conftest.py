@@ -1,24 +1,37 @@
-import struct
 import wave
 import pytest
+from io import BytesIO
 from pathlib import Path
+
+
+def _build_wav_bytes(duration_seconds: int) -> bytes:
+    sample_rate = 16000
+    num_channels = 1
+    sample_width = 2  # 16-bit
+    num_frames = sample_rate * duration_seconds
+
+    buffer = BytesIO()
+    with wave.open(buffer, "wb") as wf:
+        wf.setnchannels(num_channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(sample_rate)
+        wf.writeframes(b"\x00" * num_frames * num_channels * sample_width)
+    return buffer.getvalue()
 
 
 @pytest.fixture
 def tmp_audio_file(tmp_path: Path) -> Path:
     """Generate a temporary 16kHz, 16-bit, mono, 1-second silent WAV file."""
-    sample_rate = 16000
-    num_channels = 1
-    sample_width = 2  # 16-bit
-    num_frames = sample_rate  # 1 second
-
     wav_path = tmp_path / "test_audio.wav"
-    with wave.open(str(wav_path), "wb") as wf:
-        wf.setnchannels(num_channels)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(sample_rate)
-        wf.writeframes(b"\x00" * num_frames * num_channels * sample_width)
+    wav_path.write_bytes(_build_wav_bytes(duration_seconds=1))
+    return wav_path
 
+
+@pytest.fixture
+def long_tmp_audio_file(tmp_path: Path) -> Path:
+    """Generate a temporary 181-second silent WAV file for limit enforcement tests."""
+    wav_path = tmp_path / "too_long_audio.wav"
+    wav_path.write_bytes(_build_wav_bytes(duration_seconds=181))
     return wav_path
 
 

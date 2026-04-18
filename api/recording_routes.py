@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
-from flask import Blueprint, Response, abort, current_app, jsonify, send_file
+from flask import Blueprint, Response, abort, current_app, jsonify, request, send_file
 
+from api.audio_ingest import AudioIngressError, stage_browser_wav_upload
 from storage.recordings import RecordingManager
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,10 @@ def _get_manager() -> RecordingManager:
     )
 
 
+def _get_max_record_seconds() -> int:
+    return int(current_app.config["APP_CONFIG"]["audio"]["max_record_duration"])
+
+
 def _error_response(message: str, status_code: int) -> tuple[Response, int]:
     return jsonify({"error": message}), status_code
 
@@ -36,6 +42,32 @@ def _recording_item_dto(recording: dict[str, Any]) -> dict[str, Any]:
         "audio_url": f"/api/recordings/{recording_id}/audio",
         "reuse": {"recording_id": recording_id},
     }
+
+
+@recording_bp.route("/api/recordings", methods=["POST"])
+def create_recording() -> tuple[Response, int]:
+    upload = request.files.get("input_audio")
+    if upload is None:
+        return _error_response("input_audio is required", 400)
+
+    temp_path: str | None = None
+    try:
+        try:
+            temp_path = stage_browser_wav_upload(upload, max_duration_seconds=_get_max_record_seconds())
+        except AudioIngressError as exc:
+            return _error_response(str(exc), 400)
+
+        recording = _get_manager().save_recording(temp_path)
+        return jsonify({"recording": _recording_item_dto(recording)}), 200
+    except Exception as exc:  # noqa: BLE001 - route must surface JSON error
+        logger.error("failed to create recording: error=%s", str(exc))
+        return _error_response("failed to save recording", 500)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError as exc:  # pragma: no cover - defensive cleanup
+                logger.warning("failed to delete temp recording upload: path=%s, error=%s", temp_path, str(exc))
 
 
 @recording_bp.route("/api/recordings", methods=["GET"])
