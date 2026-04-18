@@ -1,0 +1,31 @@
+# Pi5 离线双语语音交互系统配置
+
+audio:
+  device: "plughw:3,0"       # seeed2micvoicec (card 2, device 0)
+  sample_rate: 16000
+  bit_depth: 16
+  channels: 1
+  max_record_duration: 180   # 录音上限 (秒)
+
+models:
+  asr:
+    zh_model_path: "models/data/vosk-model-small-cn-0.22"
+    en_model_path: "models/data/vosk-model-small-en-us-0.15"
+  mt:
+    package_path: "models/data/argos"
+  tts:
+    zh_model_path: "models/data/piper/zh_CN-huayan-medium.onnx"
+    en_model_path: "models/data/piper/en_US-lessac-medium.onnx"
+
+storage:
+  history_dir: "data/history"
+  recordings_dir: "data/recordings"
+  max_history: 5
+  max_recordings: 5
+
+api:
+  host: "0.0.0.0"
+  port: 5000
+
+logging:
+  level: "INFO"

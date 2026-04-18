@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "name": "pi5-offline-translator",
+  "version": "1.0.0",
+  "description": "Pi5 离线双语语音交互系统 - 多Agent协作框架",
+
+  "agents": {
+    "directory": ".claude/agents",
+    "enabled": [
+      "tech-lead",
+      "embedded-engineer",
+      "ml-engineer",
+      "python-developer",
+      "qa-lead"
+    ]
+  },
+
+  "skills": {
+    "directory": ".claude/skills",
+    "enabled": [
+      "sprint-plan",
+      "task-breakdown",
+      "architecture-review",
+      "code-review",
+      "bug-report",
+      "release-checklist"
+    ]
+  },
+
+  "rules": {
+    "enabled": true,
+    "paths": [
+      ".claude/rules/coordination-rules.md",
+      ".claude/rules/code-review-rules.md",
+      ".claude/rules/python-coding-rules.md",
+      ".claude/rules/commit-rules.md"
+    ]
+  },
+
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "PROJECT_ROOT=$(git rev-parse --show-toplevel) && bun \"$PROJECT_ROOT/.claude/hooks/session-start.ts\"",
+        "timeout": 15
+      }]
+    }],
+    "PreToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "PROJECT_ROOT=$(git rev-parse --show-toplevel) && bun \"$PROJECT_ROOT/.claude/hooks/pre-commit.ts\"",
+        "timeout": 5
+      }]
+    }, {
+      "matcher": "Skill",
+      "hooks": [{
+        "type": "command",
+        "command": "PROJECT_ROOT=$(git rev-parse --show-toplevel) && bun \"$PROJECT_ROOT/.claude/hooks/skill-hook.ts\"",
+        "timeout": 5
+      }]
+    }],
+    "SubagentStart": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "PROJECT_ROOT=$(git rev-parse --show-toplevel) && bun \"$PROJECT_ROOT/.claude/hooks/log-agent.ts\"",
+        "timeout": 5
+      }]
+    }],
+    "SubagentStop": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "PROJECT_ROOT=$(git rev-parse --show-toplevel) && bun \"$PROJECT_ROOT/.claude/hooks/log-agent-stop.ts\"",
+        "timeout": 5
+      }]
+    }],
+    "Stop": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "PROJECT_ROOT=$(git rev-parse --show-toplevel) && bun \"$PROJECT_ROOT/.claude/hooks/session-end.ts\"",
+        "timeout": 10
+      }]
+    }]
+  }
+}

@@ -1,0 +1,14 @@
+# Session Logs
+
+此目录包含会话历史和 Agent 调用审计。
+
+## 文件说明
+
+- `session-log.md` - 会话归档，记录每次会话的开始/结束、活动内容
+- `agent-audit.log` - Agent 调用审计，记录所有 Agent 启动时间
+
+## 管理策略
+
+这些文件默认不提交到 git（通过 `.gitignore` 配置），以避免污染仓库历史。
+
+如需跟踪会话历史，可以取消 `.gitignore` 中的注释。

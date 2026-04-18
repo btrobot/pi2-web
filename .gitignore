@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Models (large files)
+models/data/
+
+# Runtime data
+data/history/
+data/recordings/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Logs (keep structure, ignore content)
+production/session-logs/*.jsonl
+production/session-logs/session-log.md
+
+# Session state (regenerated per session)
+production/session-state/active.md
+
+# OMC state
+.omc/state/
+.omc/logs/
+# Old DewuGoJin docs (keep new Pi5 docs)
+docs/adr/
+docs/ai-doc-system-spec.md
+docs/api-reference.md
+docs/chat-req.md
+docs/data-model.md
+docs/dev-guide.md
+docs/doc-checklist.md
+docs/documentation-strategy.md
+docs/domain-model-analysis.md
+docs/init-req.md
+docs/material-gap-analysis.md
+docs/material-requirements.md
+docs/material-task-breakdown.md
+docs/sprint-plan-phase*.md
+docs/sprint-6-plan.md
+docs/sprint-plan-sprint5.md
+docs/system-architecture.md
+docs/task-breakdown-cli-tool.md
+docs/task-breakdown-phase*.md
+docs/user-guide.md
+.claude/memory/
+.claude/settings.local.json
+.claude/skills/security-scan/
