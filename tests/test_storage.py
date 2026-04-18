@@ -1,6 +1,9 @@
-"""Unit tests for storage.history and storage.recordings."""
+"""Storage tests for frozen history-manifest and recording metadata contracts."""
+
+from __future__ import annotations
 
 import io
+import json
 import wave
 import zipfile
 from pathlib import Path
@@ -11,187 +14,243 @@ from storage.history import HistoryManager
 from storage.recordings import RecordingManager
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def make_wav(path: Path, duration_seconds: float = 1.0) -> Path:
-    """Write a minimal valid WAV file to *path* and return it."""
+    """Write a minimal valid WAV file."""
+
     sample_rate = 16000
-    num_channels = 1
-    sample_width = 2  # 16-bit
-    num_frames = int(sample_rate * duration_seconds)
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(num_channels)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(sample_rate)
-        wf.writeframes(b"\x00" * num_frames * num_channels * sample_width)
+    channels = 1
+    sample_width = 2
+    frames = int(sample_rate * duration_seconds)
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(channels)
+        handle.setsampwidth(sample_width)
+        handle.setframerate(sample_rate)
+        handle.writeframes(b"\x00" * frames * channels * sample_width)
     return path
 
-
-# ---------------------------------------------------------------------------
-# HistoryManager tests
-# ---------------------------------------------------------------------------
 
 class TestHistoryManager:
     @pytest.fixture
     def history_dir(self, tmp_path: Path) -> Path:
-        d = tmp_path / "history"
-        d.mkdir()
-        return d
+        path = tmp_path / "history"
+        path.mkdir()
+        return path
 
     @pytest.fixture
     def manager(self, history_dir: Path) -> HistoryManager:
         return HistoryManager(str(history_dir), max_records=5)
 
-    def _add(self, manager: HistoryManager, n: int = 1, audio_path: str | None = None) -> list[dict]:
-        results = []
-        for i in range(n):
-            r = manager.add_record(
-                record_type="translation",
-                source_lang="zh",
-                target_lang="en",
-                source_text=f"你好 {i}",
-                target_text=f"Hello {i}",
-                audio_path=audio_path,
-            )
-            results.append(r)
-        return results
-
-    # --- add_record ---
-
-    def test_add_record_returns_record_with_id(self, manager: HistoryManager) -> None:
-        record = self._add(manager)[0]
-        assert record["id"] == 1
-        assert record["source_text"] == "你好 0"
-        assert record["type"] == "translation"
-
-    def test_add_record_persists(self, manager: HistoryManager) -> None:
-        self._add(manager, 3)
-        assert len(manager.list_records()) == 3
-
-    def test_add_record_with_audio_copies_file(
-        self, manager: HistoryManager, tmp_path: Path, history_dir: Path
-    ) -> None:
-        wav = make_wav(tmp_path / "input.wav")
+    def test_add_record_creates_manifest_directory(self, manager: HistoryManager, history_dir: Path) -> None:
         record = manager.add_record(
-            record_type="asr",
+            mode_key="mt_tts_zh_en",
+            group_key="cross_text_to_speech",
             source_lang="zh",
-            target_lang=None,
-            source_text="测试",
-            target_text=None,
-            audio_path=str(wav),
+            target_lang="en",
+            source_text="你好",
+            target_text="Hello",
+            input_text="你好",
+            output_text="Hello",
+            output_audio_path=None,
         )
-        assert record["audio_file"] is not None
-        assert (history_dir / record["audio_file"]).exists()
 
-    def test_add_record_without_audio(self, manager: HistoryManager) -> None:
-        record = self._add(manager)[0]
-        assert record["audio_file"] is None
+        record_dir = history_dir / "record_001"
+        manifest_path = record_dir / "manifest.json"
 
-    # --- list_records ---
+        assert record["id"] == 1
+        assert record["mode_key"] == "mt_tts_zh_en"
+        assert record_dir.exists()
+        assert manifest_path.exists()
 
-    def test_list_records_empty(self, manager: HistoryManager) -> None:
-        assert manager.list_records() == []
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest["group_key"] == "cross_text_to_speech"
+        assert manifest["source_lang"] == "zh"
+        assert manifest["target_lang"] == "en"
+        assert manifest["artifacts"]["input_text"] == "input_text.txt"
+        assert manifest["artifacts"]["output_text"] == "output_text.txt"
+        assert manifest["artifacts"]["input_audio"] is None
+        assert manifest["artifacts"]["output_audio"] is None
+        assert manifest["values"] == {"source_text": "你好", "output_text": "Hello"}
 
-    def test_list_records_order(self, manager: HistoryManager) -> None:
-        self._add(manager, 3)
-        records = manager.list_records()
-        ids = [r["id"] for r in records]
-        assert ids == [1, 2, 3]
-
-    # --- get_record ---
-
-    def test_get_record_found(self, manager: HistoryManager) -> None:
-        self._add(manager, 2)
-        r = manager.get_record(2)
-        assert r is not None
-        assert r["id"] == 2
-
-    def test_get_record_not_found(self, manager: HistoryManager) -> None:
-        assert manager.get_record(99) is None
-
-    # --- FIFO eviction ---
-
-    def test_fifo_keeps_max_records(self, manager: HistoryManager) -> None:
-        self._add(manager, 6)
-        records = manager.list_records()
-        assert len(records) == 5
-
-    def test_fifo_removes_oldest_record(self, manager: HistoryManager) -> None:
-        self._add(manager, 6)
-        records = manager.list_records()
-        ids = [r["id"] for r in records]
-        assert 1 not in ids
-        assert ids == [2, 3, 4, 5, 6]
-
-    def test_fifo_deletes_audio_file_of_evicted_record(
-        self, manager: HistoryManager, tmp_path: Path, history_dir: Path
+    def test_optional_artifact_combinations_follow_mode_shape(
+        self,
+        manager: HistoryManager,
+        history_dir: Path,
+        tmp_path: Path,
     ) -> None:
-        wav = make_wav(tmp_path / "audio.wav")
-        # First record gets audio; it should be evicted when 6th is added
-        manager.add_record(
-            record_type="asr",
+        input_audio = make_wav(tmp_path / "input.wav")
+        output_audio = make_wav(tmp_path / "output.wav")
+
+        asr_record = manager.add_record(
+            mode_key="asr_en_en",
+            group_key="same_speech_to_text",
+            source_lang="en",
+            target_lang="en",
+            source_text="hello world",
+            target_text="hello world",
+            input_audio_path=str(input_audio),
+        )
+        s2s_record = manager.add_record(
+            mode_key="asr_mt_tts_zh_en",
+            group_key="cross_speech_to_speech",
             source_lang="zh",
-            target_lang=None,
+            target_lang="en",
+            source_text="你好",
+            target_text="Hello",
+            input_audio_path=str(input_audio),
+            output_audio_path=str(output_audio),
+        )
+
+        asr_manifest = json.loads((history_dir / "record_001" / "manifest.json").read_text(encoding="utf-8"))
+        s2s_manifest = json.loads((history_dir / "record_002" / "manifest.json").read_text(encoding="utf-8"))
+
+        assert asr_record["artifacts"]["input_audio"] == "input_audio.wav"
+        assert asr_record["artifacts"]["output_audio"] is None
+        assert asr_manifest["artifacts"]["output_text"] == "output_text.txt"
+        assert asr_manifest["values"]["output_text"] == "hello world"
+
+        assert s2s_record["artifacts"]["input_audio"] == "input_audio.wav"
+        assert s2s_record["artifacts"]["output_audio"] == "output_audio.wav"
+        assert s2s_manifest["artifacts"]["output_text"] == "output_text.txt"
+        assert s2s_manifest["values"]["output_text"] == "Hello"
+
+    def test_list_and_get_records_return_enriched_manifest_shape(self, manager: HistoryManager) -> None:
+        manager.add_record(
+            mode_key="mt_zh_en",
+            group_key="cross_text_to_text",
+            source_lang="zh",
+            target_lang="en",
+            source_text="你好",
+            target_text="Hello",
+            input_text="你好",
+            output_text="Hello",
+        )
+
+        records = manager.list_records()
+        record = manager.get_record(1)
+
+        assert len(records) == 1
+        assert record is not None
+        assert record["type"] == "mt_zh_en"
+        assert record["source_text"] == "你好"
+        assert record["target_text"] == "Hello"
+        assert record["timestamp"] == record["created_at"]
+
+    def test_fifo_eviction_removes_full_oldest_record_directory(
+        self,
+        history_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        manager = HistoryManager(str(history_dir), max_records=2)
+        output_audio = make_wav(tmp_path / "out.wav")
+
+        manager.add_record(
+            mode_key="tts_zh_zh",
+            group_key="same_text_to_speech",
+            source_lang="zh",
+            target_lang="zh",
             source_text="first",
             target_text=None,
-            audio_path=str(wav),
+            input_text="first",
+            output_audio_path=str(output_audio),
         )
-        first_audio = history_dir / "history_001.wav"
-        assert first_audio.exists()
+        assert (history_dir / "record_001").exists()
 
-        # Add 5 more to push the first one out
-        self._add(manager, 5)
+        for index in range(2):
+            manager.add_record(
+                mode_key="mt_zh_en",
+                group_key="cross_text_to_text",
+                source_lang="zh",
+                target_lang="en",
+                source_text=f"text-{index}",
+                target_text=f"Hello-{index}",
+                input_text=f"text-{index}",
+                output_text=f"Hello-{index}",
+            )
 
-        assert not first_audio.exists()
+        assert not (history_dir / "record_001").exists()
+        assert [item["id"] for item in manager.list_records()] == [2, 3]
 
-    # --- export_all ---
-
-    def test_export_all_returns_bytesio(self, manager: HistoryManager) -> None:
-        self._add(manager, 2)
-        buf = manager.export_all()
-        assert isinstance(buf, io.BytesIO)
-
-    def test_export_all_is_valid_zip(self, manager: HistoryManager) -> None:
-        self._add(manager, 2)
-        buf = manager.export_all()
-        assert zipfile.is_zipfile(buf)
-
-    def test_export_all_contains_metadata(self, manager: HistoryManager) -> None:
-        self._add(manager, 2)
-        buf = manager.export_all()
-        with zipfile.ZipFile(buf) as zf:
-            assert "metadata.json" in zf.namelist()
-
-    def test_export_all_includes_audio_files(
-        self, manager: HistoryManager, tmp_path: Path
+    def test_get_artifact_path_and_get_audio_path_resolve_frozen_artifacts(
+        self,
+        manager: HistoryManager,
+        tmp_path: Path,
     ) -> None:
-        wav = make_wav(tmp_path / "audio.wav")
+        input_audio = make_wav(tmp_path / "input.wav")
+        output_audio = make_wav(tmp_path / "output.wav")
         manager.add_record(
-            record_type="asr",
-            source_lang="zh",
-            target_lang=None,
-            source_text="test",
-            target_text=None,
-            audio_path=str(wav),
+            mode_key="asr_mt_tts_en_zh",
+            group_key="cross_speech_to_speech",
+            source_lang="en",
+            target_lang="zh",
+            source_text="hello",
+            target_text="你好",
+            input_audio_path=str(input_audio),
+            output_audio_path=str(output_audio),
         )
-        buf = manager.export_all()
-        with zipfile.ZipFile(buf) as zf:
-            names = zf.namelist()
-        assert any(n.endswith(".wav") for n in names)
 
+        assert manager.get_artifact_path(1, "manifest") is not None
+        assert manager.get_artifact_path(1, "input_audio") is not None
+        assert manager.get_artifact_path(1, "output_audio") is not None
+        assert manager.get_audio_path(1) == manager.get_artifact_path(1, "output_audio")
 
-# ---------------------------------------------------------------------------
-# RecordingManager tests
-# ---------------------------------------------------------------------------
+    def test_delete_record_removes_entire_group_and_index(self, manager: HistoryManager, history_dir: Path) -> None:
+        manager.add_record(
+            mode_key="mt_zh_en",
+            group_key="cross_text_to_text",
+            source_lang="zh",
+            target_lang="en",
+            source_text="你好",
+            target_text="Hello",
+            input_text="你好",
+            output_text="Hello",
+        )
+
+        deleted = manager.delete_record(1)
+
+        assert deleted is True
+        assert manager.get_record(1) is None
+        assert not (history_dir / "record_001").exists()
+        index = json.loads((history_dir / "index.json").read_text(encoding="utf-8"))
+        assert index["items"] == []
+
+    def test_export_all_contains_index_manifests_and_artifacts(
+        self,
+        manager: HistoryManager,
+        tmp_path: Path,
+    ) -> None:
+        input_audio = make_wav(tmp_path / "input.wav")
+        output_audio = make_wav(tmp_path / "output.wav")
+        manager.add_record(
+            mode_key="asr_mt_tts_zh_en",
+            group_key="cross_speech_to_speech",
+            source_lang="zh",
+            target_lang="en",
+            source_text="你好",
+            target_text="Hello",
+            input_audio_path=str(input_audio),
+            output_audio_path=str(output_audio),
+        )
+
+        exported = manager.export_all()
+
+        assert isinstance(exported, io.BytesIO)
+        assert zipfile.is_zipfile(exported)
+        with zipfile.ZipFile(exported) as archive:
+            names = set(archive.namelist())
+
+        assert "index.json" in names
+        assert "record_001/manifest.json" in names
+        assert "record_001/input_audio.wav" in names
+        assert "record_001/output_audio.wav" in names
+        assert "record_001/output_text.txt" in names
+
 
 class TestRecordingManager:
     @pytest.fixture
     def recordings_dir(self, tmp_path: Path) -> Path:
-        d = tmp_path / "recordings"
-        d.mkdir()
-        return d
+        path = tmp_path / "recordings"
+        path.mkdir()
+        return path
 
     @pytest.fixture
     def manager(self, recordings_dir: Path) -> RecordingManager:
@@ -199,114 +258,77 @@ class TestRecordingManager:
 
     @pytest.fixture
     def wav_file(self, tmp_path: Path) -> Path:
-        return make_wav(tmp_path / "rec.wav")
+        return make_wav(tmp_path / "recording.wav")
 
-    # --- save_recording ---
-
-    def test_save_recording_returns_record(
-        self, manager: RecordingManager, wav_file: Path
+    def test_save_recording_returns_frozen_metadata_shape(
+        self,
+        manager: RecordingManager,
+        recordings_dir: Path,
+        wav_file: Path,
     ) -> None:
         record = manager.save_recording(str(wav_file))
+
         assert record["id"] == 1
-        assert record["file_name"] == "rec_001.wav"
+        assert record["file_name"] == "recording_001.wav"
+        assert record["filename"] == "recording_001.wav"
         assert record["duration_seconds"] == pytest.approx(1.0, abs=0.1)
+        assert (recordings_dir / "recording_001.wav").exists()
 
-    def test_save_recording_copies_file(
-        self, manager: RecordingManager, wav_file: Path, recordings_dir: Path
+        metadata = json.loads((recordings_dir / "metadata.json").read_text(encoding="utf-8"))
+        assert metadata["items"][0]["file_name"] == "recording_001.wav"
+
+    def test_list_and_get_recordings_return_enriched_shape(self, manager: RecordingManager, wav_file: Path) -> None:
+        manager.save_recording(str(wav_file))
+
+        items = manager.list_recordings()
+        record = manager.get_recording(1)
+
+        assert len(items) == 1
+        assert record is not None
+        assert record["timestamp"] == record["created_at"]
+        assert record["filename"] == record["file_name"]
+
+    def test_fifo_eviction_removes_oldest_recording_file(
+        self,
+        recordings_dir: Path,
+        wav_file: Path,
     ) -> None:
-        record = manager.save_recording(str(wav_file))
-        assert (recordings_dir / record["file_name"]).exists()
-
-    def test_save_recording_missing_file_raises(
-        self, manager: RecordingManager
-    ) -> None:
-        with pytest.raises(FileNotFoundError):
-            manager.save_recording("/nonexistent/path/audio.wav")
-
-    # --- list_recordings ---
-
-    def test_list_recordings_empty(self, manager: RecordingManager) -> None:
-        assert manager.list_recordings() == []
-
-    def test_list_recordings_returns_all(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
+        manager = RecordingManager(str(recordings_dir), max_recordings=2)
         for _ in range(3):
             manager.save_recording(str(wav_file))
-        assert len(manager.list_recordings()) == 3
 
-    # --- get_recording ---
+        assert [item["id"] for item in manager.list_recordings()] == [2, 3]
+        assert not (recordings_dir / "recording_001.wav").exists()
 
-    def test_get_recording_found(
-        self, manager: RecordingManager, wav_file: Path
+    def test_delete_recording_removes_file_and_metadata(
+        self,
+        manager: RecordingManager,
+        recordings_dir: Path,
+        wav_file: Path,
     ) -> None:
         manager.save_recording(str(wav_file))
+
+        deleted = manager.delete_recording(1)
+
+        assert deleted is True
+        assert manager.get_recording(1) is None
+        assert not (recordings_dir / "recording_001.wav").exists()
+        metadata = json.loads((recordings_dir / "metadata.json").read_text(encoding="utf-8"))
+        assert metadata["items"] == []
+
+    def test_export_all_contains_metadata_and_recording_files(self, manager: RecordingManager, wav_file: Path) -> None:
         manager.save_recording(str(wav_file))
-        r = manager.get_recording(2)
-        assert r is not None
-        assert r["id"] == 2
 
-    def test_get_recording_not_found(self, manager: RecordingManager) -> None:
-        assert manager.get_recording(99) is None
+        exported = manager.export_all()
 
-    # --- FIFO eviction ---
+        assert isinstance(exported, io.BytesIO)
+        assert zipfile.is_zipfile(exported)
+        with zipfile.ZipFile(exported) as archive:
+            names = set(archive.namelist())
 
-    def test_fifo_keeps_max_recordings(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
-        for _ in range(6):
-            manager.save_recording(str(wav_file))
-        assert len(manager.list_recordings()) == 5
+        assert "metadata.json" in names
+        assert "recording_001.wav" in names
 
-    def test_fifo_removes_oldest_recording(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
-        for _ in range(6):
-            manager.save_recording(str(wav_file))
-        ids = [r["id"] for r in manager.list_recordings()]
-        assert 1 not in ids
-        assert ids == [2, 3, 4, 5, 6]
-
-    def test_fifo_deletes_wav_file_of_evicted_recording(
-        self, manager: RecordingManager, wav_file: Path, recordings_dir: Path
-    ) -> None:
-        for _ in range(6):
-            manager.save_recording(str(wav_file))
-        assert not (recordings_dir / "rec_001.wav").exists()
-
-    # --- export_all ---
-
-    def test_export_all_returns_bytesio(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
-        manager.save_recording(str(wav_file))
-        buf = manager.export_all()
-        assert isinstance(buf, io.BytesIO)
-
-    def test_export_all_is_valid_zip(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
-        manager.save_recording(str(wav_file))
-        buf = manager.export_all()
-        assert zipfile.is_zipfile(buf)
-
-    def test_export_all_contains_metadata(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
-        manager.save_recording(str(wav_file))
-        buf = manager.export_all()
-        with zipfile.ZipFile(buf) as zf:
-            assert "metadata.json" in zf.namelist()
-
-    def test_export_all_includes_wav_files(
-        self, manager: RecordingManager, wav_file: Path
-    ) -> None:
-        manager.save_recording(str(wav_file))
-        buf = manager.export_all()
-        with zipfile.ZipFile(buf) as zf:
-            names = zf.namelist()
-        assert any(n.endswith(".wav") for n in names)
-
-    def test_export_all_empty_is_valid_zip(self, manager: RecordingManager) -> None:
-        buf = manager.export_all()
-        assert zipfile.is_zipfile(buf)
+    def test_missing_recording_raises_file_not_found(self, manager: RecordingManager) -> None:
+        with pytest.raises(FileNotFoundError):
+            manager.save_recording("/nonexistent/audio.wav")

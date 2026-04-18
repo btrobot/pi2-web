@@ -1,168 +1,149 @@
-"""组合管线 — FR-03: MT+TTS, FR-04: ASR+MT"""
+"""Multi-step pipeline composition for cross-language leaf modes."""
 
-# 1. Standard library
+from __future__ import annotations
+
 import logging
 import time
+from typing import Any
 
-# 2. Local
-from audio import record, play, AudioError
-from models.asr import ASREngine, ASRError
-from models.mt import MTEngine, TranslationError
-from models.tts import TTSEngine, TTSError
-from pipeline._utils import make_output_path
+from app.mode_registry import ModeDefinition, get_mode_definition
+from pipeline._utils import build_base_result
+from pipeline.operations import capture_audio, recognize_audio, synthesize_text, translate_text
 
 logger = logging.getLogger(__name__)
 
 
-def run_mt_tts(text: str, source_lang: str, target_lang: str, config: dict) -> dict:
-    """FR-03: 文本 → MT 翻译 → TTS 合成 → 播放。
+def run_composite_mode(
+    mode: ModeDefinition,
+    *,
+    config: dict[str, Any],
+    input_text: str | None = None,
+    input_audio_path: str | None = None,
+    playback: bool = True,
+) -> dict[str, Any]:
+    """Execute a multi-step frozen mode definition."""
 
-    Args:
-        text: 待翻译文本。
-        source_lang: 源语言代码，"zh" 或 "en"。
-        target_lang: 目标语言代码，"zh" 或 "en"。
-        config: 应用配置字典（来自 default.yaml）。
-
-    Returns:
-        {"source_text": str, "translated_text": str, "audio_path": str} 成功时；
-        部分结果 + "error" 键 失败时。
-    """
-    tts_cfg = config["models"]["tts"]
-    audio_cfg = config["audio"]
-    storage_cfg = config["storage"]
-
-    mt_engine = MTEngine()
-    tts_engine = TTSEngine(
-        zh_model_path=tts_cfg["zh_model_path"],
-        en_model_path=tts_cfg["en_model_path"],
-    )
-
-    output_path = make_output_path(storage_cfg, "mt_tts")
-
-    result: dict = {"source_text": text, "translated_text": None, "audio_path": None}
+    result = build_base_result(mode)
     start = time.monotonic()
 
     try:
-        translated = mt_engine.translate(text, source_lang, target_lang)
-        result["translated_text"] = translated
-    except TranslationError as e:
-        elapsed = time.monotonic() - start
-        logger.error(
-            "run_mt_tts MT失败: %s→%s, elapsed=%.2fs, error=%s",
-            source_lang, target_lang, elapsed, str(e),
-        )
-        result["error"] = str(e)
-        return result
-
-    try:
-        tts_engine.synthesize(translated, target_lang, output_path)
-        play(wav_path=output_path, device=audio_cfg["device"])
-        result["audio_path"] = output_path
-        elapsed = time.monotonic() - start
-        logger.info(
-            "run_mt_tts 完成: %s→%s, elapsed=%.2fs, path=%s",
-            source_lang, target_lang, elapsed, output_path,
-        )
-    except (TTSError, AudioError) as e:
-        elapsed = time.monotonic() - start
-        logger.error(
-            "run_mt_tts TTS/播放失败: %s→%s, elapsed=%.2fs, error=%s",
-            source_lang, target_lang, elapsed, str(e),
-        )
-        result["error"] = str(e)
-
-    return result
-
-
-def run_asr_mt(source_lang: str, target_lang: str, config: dict) -> dict:
-    """FR-04: 录音 → ASR 识别 → MT 翻译 → TTS 合成 → 播放。
-
-    Args:
-        source_lang: 源语言代码，"zh" 或 "en"。
-        target_lang: 目标语言代码，"zh" 或 "en"。
-        config: 应用配置字典（来自 default.yaml）。
-
-    Returns:
-        {"source_text": str, "translated_text": str, "audio_path": str} 成功时；
-        部分结果 + "error" 键 失败时。
-    """
-    asr_cfg = config["models"]["asr"]
-    mt_cfg = config["models"]["mt"]
-    tts_cfg = config["models"]["tts"]
-    audio_cfg = config["audio"]
-    storage_cfg = config["storage"]
-
-    asr_engine = ASREngine(
-        zh_model_path=asr_cfg["zh_model_path"],
-        en_model_path=asr_cfg["en_model_path"],
-    )
-    mt_engine = MTEngine()
-    tts_engine = TTSEngine(
-        zh_model_path=tts_cfg["zh_model_path"],
-        en_model_path=tts_cfg["en_model_path"],
-    )
-
-    audio_path = make_output_path(storage_cfg, "asr_mt")
-    output_path = make_output_path(storage_cfg, "asr_mt_tts")
-
-    result: dict = {"source_text": None, "translated_text": None, "audio_path": None}
-    start = time.monotonic()
-
-    try:
-        recorded_path = record(
-            output_path=audio_path,
-            device=audio_cfg["device"],
-            max_duration=audio_cfg["max_record_duration"],
-        )
-        result["audio_path"] = recorded_path
-    except AudioError as e:
-        elapsed = time.monotonic() - start
-        logger.error(
-            "run_asr_mt 录音失败: %s→%s, elapsed=%.2fs, error=%s",
-            source_lang, target_lang, elapsed, str(e),
-        )
-        result["error"] = str(e)
-        return result
-
-    try:
-        source_text = asr_engine.recognize(recorded_path, source_lang)
+        if mode.pipeline_chain[0] == "asr":
+            recorded_path = input_audio_path or capture_audio(config=config, prefix=f"{mode.mode_key}_input")
+            result["input_audio_path"] = recorded_path
+            source_text = recognize_audio(config=config, audio_path=recorded_path, lang=mode.source_lang)
+        else:
+            source_text = input_text or ""
         result["source_text"] = source_text
-    except ASRError as e:
-        elapsed = time.monotonic() - start
-        logger.error(
-            "run_asr_mt ASR失败: %s→%s, elapsed=%.2fs, error=%s",
-            source_lang, target_lang, elapsed, str(e),
-        )
-        result["error"] = str(e)
-        return result
 
-    try:
-        translated = mt_engine.translate(source_text, source_lang, target_lang)
-        result["translated_text"] = translated
-    except TranslationError as e:
-        elapsed = time.monotonic() - start
-        logger.error(
-            "run_asr_mt MT失败: %s→%s, elapsed=%.2fs, error=%s",
-            source_lang, target_lang, elapsed, str(e),
-        )
-        result["error"] = str(e)
-        return result
+        current_text = source_text
+        if "mt" in mode.pipeline_chain:
+            current_text = translate_text(
+                text=current_text,
+                source_lang=mode.source_lang,
+                target_lang=mode.target_lang,
+            )
+            result["output_text"] = current_text
+        elif mode.output_type == "text":
+            result["output_text"] = current_text
 
-    try:
-        tts_engine.synthesize(translated, target_lang, output_path)
-        play(wav_path=output_path, device=audio_cfg["device"])
-        result["audio_path"] = output_path
-        elapsed = time.monotonic() - start
-        logger.info(
-            "run_asr_mt 完成: %s→%s, elapsed=%.2fs, path=%s",
-            source_lang, target_lang, elapsed, output_path,
-        )
-    except (TTSError, AudioError) as e:
-        elapsed = time.monotonic() - start
-        logger.error(
-            "run_asr_mt TTS/播放失败: %s→%s, elapsed=%.2fs, error=%s",
-            source_lang, target_lang, elapsed, str(e),
-        )
-        result["error"] = str(e)
+        if mode.pipeline_chain[-1] == "tts":
+            result["output_audio_path"] = synthesize_text(
+                config=config,
+                text=current_text,
+                lang=mode.target_lang,
+                prefix=f"{mode.mode_key}_output",
+                playback=playback,
+            )
+    except Exception as exc:  # noqa: BLE001 - pipeline returns structured errors
+        result["error"] = str(exc)
 
+    elapsed = time.monotonic() - start
+    logger.info(
+        "run_composite_mode complete: mode_key=%s, elapsed=%.2fs, error=%s",
+        mode.mode_key,
+        elapsed,
+        result.get("error"),
+    )
     return result
+
+
+def run_mt_tts(
+    text: str,
+    source_lang: str,
+    target_lang: str,
+    config: dict[str, Any],
+    *,
+    playback: bool = True,
+) -> dict[str, Any]:
+    """Compatibility wrapper for legacy MT+TTS callers."""
+
+    mode = get_mode_definition(f"mt_tts_{source_lang}_{target_lang}")
+    return run_composite_mode(mode, config=config, input_text=text, playback=playback)
+
+
+def run_asr_mt(
+    source_lang: str,
+    target_lang: str,
+    config: dict[str, Any],
+    *,
+    input_audio_path: str | None = None,
+    playback: bool = True,
+) -> dict[str, Any]:
+    """Compatibility wrapper for the legacy ASR+MT(+TTS) path."""
+
+    mode = get_mode_definition(f"asr_mt_tts_{source_lang}_{target_lang}")
+    return run_composite_mode(
+        mode,
+        config=config,
+        input_audio_path=input_audio_path,
+        playback=playback,
+    )
+
+
+def run_mt(text: str, source_lang: str, target_lang: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Forward wrapper for pure MT modes."""
+
+    mode = get_mode_definition(f"mt_{source_lang}_{target_lang}")
+    return run_composite_mode(mode, config=config, input_text=text, playback=False)
+
+
+def run_asr_mt_text(
+    source_lang: str,
+    target_lang: str,
+    config: dict[str, Any],
+    *,
+    input_audio_path: str | None = None,
+) -> dict[str, Any]:
+    """Forward wrapper for audio-to-text cross-language modes."""
+
+    mode = get_mode_definition(f"asr_mt_{source_lang}_{target_lang}")
+    return run_composite_mode(mode, config=config, input_audio_path=input_audio_path, playback=False)
+
+
+def run_asr_mt_tts(
+    source_lang: str,
+    target_lang: str,
+    config: dict[str, Any],
+    *,
+    input_audio_path: str | None = None,
+    playback: bool = True,
+) -> dict[str, Any]:
+    """Forward wrapper for audio-to-audio cross-language modes."""
+
+    mode = get_mode_definition(f"asr_mt_tts_{source_lang}_{target_lang}")
+    return run_composite_mode(
+        mode,
+        config=config,
+        input_audio_path=input_audio_path,
+        playback=playback,
+    )
+
+
+__all__ = [
+    "run_asr_mt",
+    "run_asr_mt_text",
+    "run_asr_mt_tts",
+    "run_composite_mode",
+    "run_mt",
+    "run_mt_tts",
+]
