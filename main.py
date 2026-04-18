@@ -1,4 +1,4 @@
-"""Pi5 离线双语语音交互系统 - 入口"""
+"""Pi5 offline bilingual speech interaction system entrypoint."""
 
 # 1. Standard library
 import argparse
@@ -20,35 +20,43 @@ _CONFIG_PATH = Path(__file__).parent / "config" / "default.yaml"
 
 def _load_config() -> dict:
     try:
-        with _CONFIG_PATH.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+        with _CONFIG_PATH.open("r", encoding="utf-8") as handle:
+            return yaml.safe_load(handle)
     except FileNotFoundError:
-        logger.error("配置文件不存在: path=%s", _CONFIG_PATH)
+        logger.error("config file not found: path=%s", _CONFIG_PATH)
         sys.exit(1)
-    except Exception as e:
-        logger.error("配置文件加载失败: path=%s, error=%s", _CONFIG_PATH, str(e))
+    except Exception as exc:  # noqa: BLE001 - entrypoint should exit on config failure
+        logger.error("failed to load config: path=%s, error=%s", _CONFIG_PATH, str(exc))
         sys.exit(1)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pi5 离线双语语音交互系统")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Pi5 offline bilingual speech interaction system")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--server",
         action="store_true",
-        help="启动 Flask API 服务器（默认启动 CLI）",
+        help="explicitly start the Flask API server (default behavior)",
+    )
+    mode_group.add_argument(
+        "--cli",
+        action="store_true",
+        help="start the minimal CLI debug path",
     )
     args = parser.parse_args()
 
     config = _load_config()
 
-    if args.server:
-        logger.info("启动 API 服务器模式")
-        from api.app import run_server
-        run_server(config)
-    else:
-        logger.info("启动 CLI 模式")
+    if args.cli:
+        logger.info("starting CLI debug mode")
         from app.cli import run_cli
+
         run_cli(config)
+    else:
+        logger.info("starting API server mode")
+        from api.app import run_server
+
+        run_server(config)
 
 
 if __name__ == "__main__":

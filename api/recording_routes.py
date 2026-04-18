@@ -1,12 +1,12 @@
-"""录音路由 — GET /api/recordings"""
+"""Recording routes for frozen req1 recording contracts."""
 
-# 1. Standard library
+from __future__ import annotations
+
 import logging
+from typing import Any
 
-# 2. Third-party
-from flask import Blueprint, current_app, jsonify, send_file, abort
+from flask import Blueprint, Response, abort, current_app, jsonify, send_file
 
-# 3. Local
 from storage.recordings import RecordingManager
 
 logger = logging.getLogger(__name__)
@@ -23,39 +23,65 @@ def _get_manager() -> RecordingManager:
     )
 
 
+def _error_response(message: str, status_code: int) -> tuple[Response, int]:
+    return jsonify({"error": message}), status_code
+
+
+def _recording_item_dto(recording: dict[str, Any]) -> dict[str, Any]:
+    recording_id = recording["id"]
+    return {
+        "id": recording_id,
+        "created_at": recording["created_at"],
+        "duration_seconds": recording["duration_seconds"],
+        "audio_url": f"/api/recordings/{recording_id}/audio",
+        "reuse": {"recording_id": recording_id},
+    }
+
+
 @recording_bp.route("/api/recordings", methods=["GET"])
-def list_recordings() -> tuple:
-    """获取最近 5 条录音列表"""
+def list_recordings() -> tuple[Response, int]:
     try:
-        recordings = _get_manager().list_recordings()
-        return jsonify(recordings), 200
-    except Exception as e:
-        logger.error("获取录音列表失败: error=%s", str(e))
-        return jsonify({"error": "获取录音列表失败"}), 500
+        recordings = list(reversed(_get_manager().list_recordings()))[:5]
+        return jsonify({"items": [_recording_item_dto(item) for item in recordings]}), 200
+    except Exception as exc:  # noqa: BLE001 - route must surface JSON error
+        logger.error("failed to list recordings: error=%s", str(exc))
+        return _error_response("failed to load recordings", 500)
 
 
 @recording_bp.route("/api/recordings/<int:recording_id>/audio", methods=["GET"])
-def get_recording_audio(recording_id: int) -> object:
-    """下载指定录音文件"""
+def get_recording_audio(recording_id: int) -> Response:
     try:
         path = _get_manager().get_audio_path(recording_id)
-    except Exception as e:
-        logger.error("获取录音音频失败: id=%d, error=%s", recording_id, str(e))
-        return jsonify({"error": "获取音频失败"}), 500
+    except Exception as exc:  # noqa: BLE001 - route must surface JSON error
+        logger.error("failed to load recording audio: id=%d, error=%s", recording_id, str(exc))
+        return _error_response("failed to load recording audio", 500)
 
     if path is None:
-        abort(404, description="录音文件不存在")
+        abort(404, description="recording file not found")
     return send_file(path, mimetype="audio/wav")
 
 
-@recording_bp.route("/api/recordings/export", methods=["GET"])
-def export_recordings() -> object:
-    """导出全部录音为 ZIP 包"""
+@recording_bp.route("/api/recordings/<int:recording_id>", methods=["DELETE"])
+def delete_recording(recording_id: int) -> tuple[Response, int]:
     try:
-        buf = _get_manager().export_all()
-    except Exception as e:
-        logger.error("导出录音失败: error=%s", str(e))
-        return jsonify({"error": "导出失败"}), 500
+        deleted = _get_manager().delete_recording(recording_id)
+    except Exception as exc:  # noqa: BLE001 - route must surface JSON error
+        logger.error("failed to delete recording: id=%d, error=%s", recording_id, str(exc))
+        return _error_response("failed to delete recording", 500)
+
+    if not deleted:
+        return _error_response(f"recording {recording_id} not found", 404)
+
+    return jsonify({"ok": True, "deleted_kind": "recording", "deleted_id": recording_id}), 200
+
+
+@recording_bp.route("/api/recordings/export", methods=["GET"])
+def export_recordings() -> Response:
+    try:
+        buf = _get_manager().export_contract()
+    except Exception as exc:  # noqa: BLE001 - route must surface JSON error
+        logger.error("failed to export recordings: error=%s", str(exc))
+        return _error_response("failed to export recordings", 500)
 
     return send_file(
         buf,

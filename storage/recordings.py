@@ -1,9 +1,10 @@
-"""录音文件管理 — FIFO 队列，最多保留 5 个"""
+"""Independent recording storage with FIFO metadata and export support."""
+
+from __future__ import annotations
 
 import io
 import json
 import logging
-import os
 import shutil
 import wave
 import zipfile
@@ -15,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class RecordingManager:
+    """Persist standalone recordings separately from conversion history."""
+
     def __init__(self, recordings_dir: str, max_recordings: int = 5) -> None:
         self._dir = Path(recordings_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
@@ -24,48 +27,59 @@ class RecordingManager:
     def _load_meta(self) -> list[dict[str, Any]]:
         if not self._meta_path.exists():
             return []
-        with self._meta_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("recordings", [])
+        with self._meta_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, list):
+            return data
+        return data.get("items") or data.get("recordings") or []
 
     def _save_meta(self, recordings: list[dict[str, Any]]) -> None:
+        payload = {"items": recordings, "max_recordings": self._max}
         tmp = self._meta_path.with_suffix(".tmp")
-        with tmp.open("w", encoding="utf-8") as f:
-            json.dump({"recordings": recordings, "max_recordings": self._max}, f, ensure_ascii=False, indent=2)
+        with tmp.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
         tmp.replace(self._meta_path)
 
     def _next_id(self, recordings: list[dict[str, Any]]) -> int:
         if not recordings:
             return 1
-        return max(r["id"] for r in recordings) + 1
+        return max(item["id"] for item in recordings) + 1
 
-    def _get_wav_duration(self, wav_path: str) -> float:
+    def _recording_path(self, recording_id: int) -> Path:
+        return self._dir / f"recording_{recording_id:03d}.wav"
+
+    def _get_wav_duration(self, wav_path: Path) -> float:
         try:
-            with wave.open(wav_path, "rb") as wf:
-                frames = wf.getnframes()
-                rate = wf.getframerate()
+            with wave.open(str(wav_path), "rb") as handle:
+                frames = handle.getnframes()
+                rate = handle.getframerate()
                 return frames / rate if rate > 0 else 0.0
         except (wave.Error, OSError):
             return 0.0
 
+    def _enrich_recording(self, record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **record,
+            "timestamp": record["created_at"],
+            "filename": record["file_name"],
+        }
+
     def save_recording(self, wav_path: str) -> dict[str, Any]:
-        if not os.path.exists(wav_path):
-            raise FileNotFoundError(f"录音文件不存在: {wav_path}")
+        source = Path(wav_path)
+        if not source.exists():
+            raise FileNotFoundError(f"recording file does not exist: {wav_path}")
 
         recordings = self._load_meta()
-        new_id = self._next_id(recordings)
-        file_name = f"rec_{new_id:03d}.wav"
+        recording_id = self._next_id(recordings)
+        destination = self._recording_path(recording_id)
 
-        shutil.copy2(wav_path, self._dir / file_name)
-        file_size = os.path.getsize(self._dir / file_name)
-        duration = self._get_wav_duration(wav_path)
-
-        record: dict[str, Any] = {
-            "id": new_id,
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "duration_seconds": round(duration, 1),
-            "file_name": file_name,
-            "file_size_bytes": file_size,
+        shutil.copy2(source, destination)
+        record = {
+            "id": recording_id,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "duration_seconds": round(self._get_wav_duration(destination), 1),
+            "file_name": destination.name,
+            "file_size_bytes": destination.stat().st_size,
         }
         recordings.append(record)
 
@@ -74,36 +88,59 @@ class RecordingManager:
             old_path = self._dir / oldest["file_name"]
             if old_path.exists():
                 old_path.unlink()
-                logger.info("FIFO淘汰录音: id=%d, file=%s", oldest["id"], oldest["file_name"])
 
         self._save_meta(recordings)
-        logger.info("保存录音: id=%d, duration=%.1fs, size=%d", new_id, duration, file_size)
-        return record
+        logger.info("saved recording: id=%d, file=%s", recording_id, destination.name)
+        return self._enrich_recording(record)
 
     def list_recordings(self) -> list[dict[str, Any]]:
-        return self._load_meta()
+        return [self._enrich_recording(item) for item in self._load_meta()]
 
     def get_recording(self, recording_id: int) -> dict[str, Any] | None:
-        for r in self._load_meta():
-            if r["id"] == recording_id:
-                return r
+        for record in self._load_meta():
+            if record["id"] == recording_id:
+                return self._enrich_recording(record)
         return None
 
     def get_audio_path(self, recording_id: int) -> Path | None:
-        rec = self.get_recording(recording_id)
-        if not rec:
+        record = self.get_recording(recording_id)
+        if not record:
             return None
-        p = self._dir / rec["file_name"]
-        return p if p.exists() else None
+        path = self._dir / record["file_name"]
+        return path if path.exists() else None
+
+    def delete_recording(self, recording_id: int) -> bool:
+        recordings = self._load_meta()
+        remaining = [item for item in recordings if item["id"] != recording_id]
+        if len(remaining) == len(recordings):
+            return False
+
+        path = self._recording_path(recording_id)
+        if path.exists():
+            path.unlink()
+        self._save_meta(remaining)
+        logger.info("deleted recording: id=%d", recording_id)
+        return True
 
     def export_all(self) -> io.BytesIO:
         buf = io.BytesIO()
-        recordings = self._load_meta()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("metadata.json", json.dumps({"recordings": recordings}, ensure_ascii=False, indent=2))
-            for r in recordings:
-                p = self._dir / r["file_name"]
-                if p.exists():
-                    zf.write(p, r["file_name"])
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+            if self._meta_path.exists():
+                archive.write(self._meta_path, "metadata.json")
+            else:
+                archive.writestr(
+                    "metadata.json",
+                    json.dumps({"items": [], "max_recordings": self._max}, ensure_ascii=False, indent=2),
+                )
+
+            for record in self._load_meta():
+                path = self._dir / record["file_name"]
+                if path.exists():
+                    archive.write(path, path.name)
         buf.seek(0)
         return buf
+
+    def export_contract(self) -> io.BytesIO:
+        """Canonical alias for the frozen recordings export ZIP."""
+
+        return self.export_all()
