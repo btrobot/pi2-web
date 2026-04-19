@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Any
 
-from app.mode_registry import ModeDefinition, get_mode_definition
+from app.mode_registry import ModeDefinition
 from pipeline._utils import build_base_result
 from pipeline.operations import capture_audio, recognize_audio, synthesize_text
 
@@ -58,23 +58,4 @@ def run_single_mode(
     return result
 
 
-def run_tts(text: str, lang: str, config: dict[str, Any], *, playback: bool = True) -> dict[str, Any]:
-    """Compatibility wrapper for legacy TTS callers."""
-
-    mode = get_mode_definition(f"tts_{lang}_{lang}")
-    return run_single_mode(mode, config=config, input_text=text, playback=playback)
-
-
-def run_asr(
-    lang: str,
-    config: dict[str, Any],
-    *,
-    input_audio_path: str | None = None,
-) -> dict[str, Any]:
-    """Compatibility wrapper for legacy ASR callers."""
-
-    mode = get_mode_definition(f"asr_{lang}_{lang}")
-    return run_single_mode(mode, config=config, input_audio_path=input_audio_path)
-
-
-__all__ = ["run_asr", "run_single_mode", "run_tts"]
+__all__ = ["run_single_mode"]

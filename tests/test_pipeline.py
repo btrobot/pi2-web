@@ -258,38 +258,13 @@ def test_run_pipeline_invalid_mode_raises_value_error(config):
 
 
 # ---------------------------------------------------------------------------
-# Compatibility aliases for existing callers
+# Legacy aliases removed
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(
-    ("legacy_mode", "kwargs", "expected_mode_key"),
-    [
-        ("tts", {"text": "hello", "lang": "en"}, "tts_en_en"),
-        ("asr", {"lang": "zh"}, "asr_zh_zh"),
-        ("mt_tts", {"text": "hello", "source_lang": "en", "target_lang": "zh"}, "mt_tts_en_zh"),
-        ("asr_mt", {"source_lang": "zh", "target_lang": "en"}, "asr_mt_tts_zh_en"),
-    ],
-)
-def test_run_pipeline_legacy_aliases_resolve_to_frozen_modes(config, legacy_mode, kwargs, expected_mode_key):
-    fake_result = _result_for_mode(expected_mode_key)
-
-    with patch("pipeline.run_tts", return_value=fake_result) as mock_tts, \
-         patch("pipeline.run_asr", return_value=fake_result) as mock_asr, \
-         patch("pipeline.run_mt_tts", return_value=fake_result) as mock_mt_tts, \
-         patch("pipeline.run_asr_mt", return_value=fake_result) as mock_asr_mt, \
-         patch("pipeline.HistoryManager", return_value=_make_history_manager(10)):
-        result = run_pipeline(legacy_mode, config, **kwargs)
-
-    called_map = {
-        "tts": mock_tts,
-        "asr": mock_asr,
-        "mt_tts": mock_mt_tts,
-        "asr_mt": mock_asr_mt,
-    }
-
-    assert called_map[legacy_mode].called
-    assert result["mode_key"] == expected_mode_key
-    assert result["legacy_mode"] == legacy_mode
+@pytest.mark.parametrize("legacy_mode", ["tts", "asr", "mt_tts", "asr_mt"])
+def test_run_pipeline_rejects_removed_legacy_aliases(config, legacy_mode):
+    with pytest.raises(ValueError, match="不支持的管线模式"):
+        run_pipeline(legacy_mode, config)
 
 
 # ---------------------------------------------------------------------------

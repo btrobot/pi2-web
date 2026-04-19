@@ -189,6 +189,16 @@ def test_legacy_record_route_is_not_registered(app, client) -> None:
     assert resp.status_code == 404
 
 
+def test_legacy_translate_route_is_not_registered(app, client) -> None:
+    rules = {rule.rule for rule in app.url_map.iter_rules()}
+    legacy_translate = "/api/" + "translate"
+
+    assert legacy_translate not in rules
+
+    resp = client.post(legacy_translate, json={"mode": 1, "text": "hello"})
+    assert resp.status_code == 404
+
+
 def test_main_defaults_to_server_mode(mock_config) -> None:
     with (
         patch("main._load_config", return_value=mock_config),

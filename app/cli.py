@@ -36,20 +36,20 @@ def _run_tts(config: dict, lang: str) -> None:
     if not text:
         print("文本不能为空")
         return
-    result = run_pipeline(mode="tts", config=config, text=text, lang=lang)
+    result = run_pipeline(mode=f"tts_{lang}_{lang}", config=config, input_text=text)
     if result.get("error"):
         print(f"错误: {result['error']}")
     else:
-        print(f"朗读完成 | 音频: {result.get('audio_path', '-')}")
+        print(f"朗读完成 | 音频: {result.get('output_audio_path', '-')}")
 
 
 def _run_asr(config: dict, lang: str) -> None:
     print("开始录音，按 Ctrl+C 停止...")
-    result = run_pipeline(mode="asr", config=config, lang=lang)
+    result = run_pipeline(mode=f"asr_{lang}_{lang}", config=config)
     if result.get("error"):
         print(f"错误: {result['error']}")
     else:
-        print(f"识别结果: {result.get('text', '')}")
+        print(f"识别结果: {result.get('output_text', '')}")
 
 
 def _run_mt_tts(config: dict) -> None:
@@ -58,33 +58,29 @@ def _run_mt_tts(config: dict) -> None:
         print("文本不能为空")
         return
     result = run_pipeline(
-        mode="mt_tts",
+        mode="mt_tts_zh_en",
         config=config,
-        text=text,
-        source_lang="zh",
-        target_lang="en",
+        input_text=text,
     )
     if result.get("error"):
         print(f"错误: {result['error']}")
     else:
-        print(f"翻译结果: {result.get('translated_text', '')}")
-        print(f"音频: {result.get('audio_path', '-')}")
+        print(f"翻译结果: {result.get('output_text', '')}")
+        print(f"音频: {result.get('output_audio_path', '-')}")
 
 
 def _run_asr_mt(config: dict) -> None:
     print("开始录音，按 Ctrl+C 停止...")
     result = run_pipeline(
-        mode="asr_mt",
+        mode="asr_mt_tts_zh_en",
         config=config,
-        source_lang="zh",
-        target_lang="en",
     )
     if result.get("error"):
         print(f"错误: {result['error']}")
     else:
         print(f"识别: {result.get('source_text', '')}")
-        print(f"翻译: {result.get('translated_text', '')}")
-        print(f"音频: {result.get('audio_path', '-')}")
+        print(f"翻译: {result.get('output_text', '')}")
+        print(f"音频: {result.get('output_audio_path', '-')}")
 
 
 def run_cli(config: dict) -> None:

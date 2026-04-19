@@ -3,20 +3,13 @@
 import logging
 from typing import Any
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template
 
 from app.i18n_registry import DEFAULT_LOCALE, SUPPORTED_LOCALES, get_bootstrap_i18n
 from app.mode_registry import list_mode_definitions
 
 logger = logging.getLogger(__name__)
 
-_MODE_MAP = {
-    1: ("tts", True),
-    2: ("asr", False),
-    3: ("asr_mt", False),
-    4: ("asr_mt", False),
-    5: ("asr_mt", False),
-}
 
 
 def _build_bootstrap_payload(config: dict[str, Any]) -> dict[str, Any]:
@@ -79,50 +72,6 @@ def create_app(config: dict[str, Any]) -> Flask:
     @app.route("/api/bootstrap", methods=["GET"])
     def bootstrap() -> tuple[Response, int]:
         return jsonify(_build_bootstrap_payload(app.config["APP_CONFIG"])), 200
-
-    @app.route("/api/translate", methods=["POST"])
-    def translate() -> tuple[Response, int]:
-        body = request.get_json(silent=True) or {}
-        mode = body.get("mode")
-        text = body.get("text", "")
-        source_lang = body.get("source_lang", "")
-        target_lang = body.get("target_lang", "")
-
-        # 输入校验
-        if mode not in (1, 2, 3, 4, 5):
-            return jsonify({"error": "mode 必须为 1~5"}), 400
-        if not isinstance(text, str):
-            return jsonify({"error": "text 必须为字符串"}), 400
-        if not isinstance(source_lang, str) or not isinstance(target_lang, str):
-            return jsonify({"error": "source_lang/target_lang 必须为字符串"}), 400
-
-        run_fn = app.config.get("PIPELINE_FN")
-        if run_fn is None:
-            return jsonify({"error": "翻译服务未初始化"}), 503
-
-        try:
-            cfg = app.config["APP_CONFIG"]
-            pipeline_mode, needs_text = _MODE_MAP[mode]
-
-            kwargs: dict[str, Any] = {}
-            if pipeline_mode == "tts":
-                kwargs = {"text": text, "lang": source_lang or "zh"}
-            elif pipeline_mode == "asr":
-                kwargs = {"lang": source_lang or "en"}
-            else:  # mt_tts, asr_mt
-                # 从请求体获取语言对，默认识别中文
-                kwargs = {
-                    "source_lang": source_lang or "zh",
-                    "target_lang": target_lang or "en",
-                }
-                if pipeline_mode == "mt_tts":
-                    kwargs["text"] = text
-
-            result = run_fn(pipeline_mode, cfg, **kwargs)
-            return jsonify({"result": result}), 200
-        except Exception as e:
-            logger.error("翻译失败: mode=%s, error=%s", mode, str(e))
-            return jsonify({"error": "翻译失败: " + str(e)}), 500
 
     logger.info("Flask 应用初始化完成")
     return app

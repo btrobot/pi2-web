@@ -75,29 +75,10 @@ def run_mt_tts(
     *,
     playback: bool = True,
 ) -> dict[str, Any]:
-    """Compatibility wrapper for legacy MT+TTS callers."""
+    """Forward wrapper for text-to-audio cross-language modes."""
 
     mode = get_mode_definition(f"mt_tts_{source_lang}_{target_lang}")
     return run_composite_mode(mode, config=config, input_text=text, playback=playback)
-
-
-def run_asr_mt(
-    source_lang: str,
-    target_lang: str,
-    config: dict[str, Any],
-    *,
-    input_audio_path: str | None = None,
-    playback: bool = True,
-) -> dict[str, Any]:
-    """Compatibility wrapper for the legacy ASR+MT(+TTS) path."""
-
-    mode = get_mode_definition(f"asr_mt_tts_{source_lang}_{target_lang}")
-    return run_composite_mode(
-        mode,
-        config=config,
-        input_audio_path=input_audio_path,
-        playback=playback,
-    )
 
 
 def run_mt(text: str, source_lang: str, target_lang: str, config: dict[str, Any]) -> dict[str, Any]:
@@ -140,7 +121,6 @@ def run_asr_mt_tts(
 
 
 __all__ = [
-    "run_asr_mt",
     "run_asr_mt_text",
     "run_asr_mt_tts",
     "run_composite_mode",
