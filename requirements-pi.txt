@@ -1,0 +1,3 @@
+﻿# Raspberry Pi / Linux runtime dependencies.
+-r requirements-dev.txt
+pyalsaaudio>=0.10.0; platform_system == "Linux"
