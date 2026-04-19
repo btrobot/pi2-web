@@ -224,8 +224,7 @@
       min-height: 0;
     }
 
-    .app-breadcrumb,
-    .summary-card,
+    .task-header,
     .shell-card {
       background: rgba(255, 255, 255, 0.92);
       border: 1px solid rgba(215, 223, 235, 0.95);
@@ -233,53 +232,17 @@
       box-shadow: var(--shadow);
     }
 
-    .app-breadcrumb {
-      padding: 16px 20px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .breadcrumb-label {
-      font-weight: 600;
-      color: var(--text-soft);
-    }
-
-    .breadcrumb-path {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      min-width: 0;
-    }
-
-    .breadcrumb-path li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .breadcrumb-path li + li::before {
-      content: ">";
-      color: var(--text-soft);
-    }
-
     .shell-main {
       display: grid;
       gap: 18px;
     }
 
-    .summary-card,
+    .task-header,
     .shell-card {
       padding: 18px 20px;
     }
 
-    .summary-top,
+    .task-header-top,
     .shell-card-head,
     .section-row,
     .status-row,
@@ -291,12 +254,21 @@
       flex-wrap: wrap;
     }
 
-    .summary-mode {
+    .task-header-label {
+      margin: 0 0 6px;
+      color: var(--text-soft);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .task-header-title {
       margin: 0;
       font-size: 1.08rem;
     }
 
-    .summary-caption,
+    .task-header-caption,
     .section-caption,
     .field-label,
     .status-note,
@@ -310,14 +282,13 @@
       line-height: 1.5;
     }
 
-    .summary-caption,
+    .task-header-caption,
     .section-caption,
     .recording-meta,
     .recording-empty {
       margin: 6px 0 0;
     }
 
-    .summary-meta,
     .button-row,
     .inline-row,
     .mode-picker,
@@ -333,11 +304,28 @@
       gap: 18px;
     }
 
+    .workbench-grid {
+      grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
+      align-items: start;
+    }
+
     .shell-card {
       min-height: 220px;
       display: grid;
       gap: 16px;
       align-content: start;
+    }
+
+    .workbench-grid .shell-card {
+      min-height: 0;
+    }
+
+    .input-actions {
+      gap: 12px;
+    }
+
+    .workbench-grid > #app-history-panel {
+      grid-column: 1 / -1;
     }
 
     .shell-card-title,
@@ -445,9 +433,20 @@
       border-style: dashed;
     }
 
+    .result-block.is-final {
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(47, 111, 235, 0.16);
+      background: rgba(47, 111, 235, 0.05);
+    }
+
     .result-label {
       margin: 0;
       font-weight: 600;
+    }
+
+    .result-actions {
+      justify-content: flex-start;
     }
 
     .result-text {
@@ -681,29 +680,21 @@
       </aside>
 
       <div class="app-content">
-        <nav id="app-breadcrumb" class="app-breadcrumb" data-i18n-attr="aria-label:a11y.breadcrumb">
-          <span class="breadcrumb-label" data-i18n="breadcrumb.current_location"></span>
-          <ol id="breadcrumb-path" class="breadcrumb-path">
-            <li><span id="breadcrumb-group"></span></li>
-            <li><span id="breadcrumb-leaf"></span></li>
-          </ol>
-        </nav>
-
         <main id="app-main" class="shell-main">
-          <section id="app-summary" class="summary-card" data-i18n-attr="aria-label:a11y.current_mode_summary">
-            <div class="summary-top">
+          <section id="app-task-header" class="task-header" data-i18n-attr="aria-label:a11y.current_task_header">
+            <div class="task-header-top">
               <div>
-                <h2 id="summary-mode" class="summary-mode">--</h2>
-                <p id="summary-caption" class="summary-caption"></p>
+                <p class="task-header-label" data-i18n="task_header.current_task"></p>
+                <h2 id="task-header-title" class="task-header-title">--</h2>
+                <p id="task-header-caption" class="task-header-caption"></p>
               </div>
               <div class="status-row">
-                <span id="summary-status" class="status-pill">
+                <span id="task-header-status" class="status-pill">
                   <span class="status-dot" aria-hidden="true"></span>
-                  <span id="summary-status-label" data-i18n="status.ready"></span>
+                  <span id="task-header-status-label" data-i18n="status.ready"></span>
                 </span>
               </div>
             </div>
-            <div id="summary-meta" class="summary-meta"></div>
           </section>
 
           <div id="utility-panels" class="shell-grid utility-grid">
@@ -771,14 +762,13 @@
             <div id="history-full-list" class="history-list"></div>
           </section>
 
-          <div id="app-shell-grid" class="shell-grid">
+          <div id="app-shell-grid" class="shell-grid workbench-grid">
             <section id="app-input-panel" class="shell-card" aria-labelledby="input-panel-title">
               <div class="shell-card-head">
                 <div>
                   <h3 id="input-panel-title" class="shell-card-title" data-i18n="panel.input"></h3>
                   <p id="mode-picker-caption" class="section-caption" data-i18n="text.mode_picker"></p>
                 </div>
-                <span id="active-mode-key" class="meta-pill">--</span>
               </div>
 
               <div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>
@@ -820,23 +810,17 @@
                 </div>
                 <div id="speech-recordings-list" class="recording-list"></div>
               </div>
-            </section>
 
-            <section id="app-control-panel" class="shell-card" aria-labelledby="control-panel-title">
-              <div class="shell-card-head">
-                <div>
-                  <h3 id="control-panel-title" class="shell-card-title" data-i18n="panel.control"></h3>
-                  <p id="control-panel-caption" class="section-caption"></p>
+              <div class="section-divider"></div>
+
+              <div class="panel-stack input-actions">
+                <div class="button-row">
+                  <button id="text-start-button" class="primary-button" type="button"></button>
+                  <button id="text-reset-button" class="secondary-button" type="button"></button>
+                  <button id="text-save-button" class="secondary-button" type="button"></button>
                 </div>
+                <p id="text-flow-status" class="status-note"></p>
               </div>
-
-              <div class="button-row">
-                <button id="text-start-button" class="primary-button" type="button"></button>
-                <button id="text-reset-button" class="secondary-button" type="button"></button>
-                <button id="text-save-button" class="secondary-button" type="button"></button>
-              </div>
-
-              <p id="text-flow-status" class="status-note"></p>
             </section>
 
             <section id="app-output-panel" class="shell-card" aria-labelledby="output-panel-title">
@@ -851,26 +835,26 @@
 
               <div id="text-result" class="result-stack" hidden>
                 <div id="result-source-audio-block" class="result-block" hidden>
-                  <p class="result-label" data-i18n="speech.source_audio"></p>
+                  <p id="result-source-audio-label" class="result-label" data-i18n="speech.source_audio"></p>
                   <audio id="result-source-audio-player" class="result-audio" controls></audio>
                 </div>
 
                 <div id="result-source-block" class="result-block" hidden>
-                  <p class="result-label" data-i18n="text.result_source"></p>
+                  <p id="result-source-label" class="result-label" data-i18n="text.result_source"></p>
                   <pre id="result-source-text" class="result-text"></pre>
                 </div>
 
                 <div id="result-output-block" class="result-block" hidden>
-                  <p class="result-label" data-i18n="text.result_output"></p>
+                  <p id="result-output-label" class="result-label" data-i18n="text.result_output"></p>
                   <pre id="result-output-text" class="result-text"></pre>
                 </div>
 
                 <div id="result-audio-block" class="result-block" hidden>
-                  <p class="result-label" data-i18n="text.result_audio"></p>
+                  <p id="result-audio-label" class="result-label" data-i18n="text.result_audio"></p>
                   <audio id="result-audio-player" class="result-audio" controls></audio>
                 </div>
 
-                <div class="button-row">
+                <div id="result-actions" class="button-row result-actions">
                   <button id="text-copy-button" class="secondary-button" type="button" hidden></button>
                   <a id="text-download-link" class="link-button" href="#" download hidden></a>
                 </div>
@@ -918,6 +902,24 @@
       'cross_text_to_text',
       'cross_speech_to_speech',
     ];
+
+    const GROUP_TASK_KEY = {
+      same_text_to_speech: 'task.text_to_speech',
+      same_speech_to_text: 'task.speech_to_text',
+      cross_text_to_speech: 'task.text_to_speech',
+      cross_speech_to_text: 'task.speech_to_text',
+      cross_text_to_text: 'task.text_to_text',
+      cross_speech_to_speech: 'task.speech_to_speech',
+    };
+
+    const TASK_VARIANT_BY_GROUP = {
+      same_text_to_speech: 'text_to_speech',
+      same_speech_to_text: 'speech_to_text',
+      cross_text_to_speech: 'text_to_speech',
+      cross_speech_to_text: 'speech_to_text',
+      cross_text_to_text: 'text_to_text',
+      cross_speech_to_speech: 'speech_to_speech',
+    };
 
     const HELP_ITEM_KEYS = [
       ['help.text_title', 'help.text_desc'],
@@ -988,16 +990,71 @@
       return getMessage(`mode.${modeKey}`) || modeKey;
     }
 
+    function getTaskLabel(modeOrGroupKey) {
+      const groupKey = typeof modeOrGroupKey === 'string' ? modeOrGroupKey : modeOrGroupKey?.group_key;
+      const taskKey = GROUP_TASK_KEY[groupKey];
+      return taskKey ? getMessage(taskKey) : '--';
+    }
+
+    function getTaskVariant(modeOrGroupKey) {
+      const groupKey = typeof modeOrGroupKey === 'string' ? modeOrGroupKey : modeOrGroupKey?.group_key;
+      return TASK_VARIANT_BY_GROUP[groupKey] || '';
+    }
+
+    function getTaskFlowKey(modeOrGroupKey, stage) {
+      const variant = getTaskVariant(modeOrGroupKey);
+      return variant ? `flow.${stage}.${variant}` : 'status.ready';
+    }
+
+    function getResultCaptionKey(modeOrGroupKey) {
+      const variant = getTaskVariant(modeOrGroupKey);
+      return variant ? `result.caption.${variant}` : 'text.result_empty';
+    }
+
+    function getResultEmptyKey(mode) {
+      if (!mode) {
+        return 'text.result_empty';
+      }
+      return mode.output_type === 'audio' ? 'result.empty.audio' : 'result.empty.text';
+    }
+
     function getLanguageLabel(code) {
       return getMessage(`common.language.${code}`) || String(code || '').toUpperCase();
     }
 
-    function getInputTypeLabel(kind) {
-      return getMessage(`common.input_type.${kind}`) || kind;
+    function getShortLanguageLabel(code) {
+      if (state.locale === 'zh-CN') {
+        if (code === 'zh') {
+          return '\u4e2d';
+        }
+        if (code === 'en') {
+          return '\u82f1';
+        }
+      }
+      return String(code || '').toUpperCase();
     }
 
-    function getOutputTypeLabel(kind) {
-      return getMessage(`common.output_type.${kind}`) || kind;
+    function getDirectionLabel(mode, compact = false) {
+      if (!mode) {
+        return '--';
+      }
+      const source = compact ? getShortLanguageLabel(mode.source_lang) : getLanguageLabel(mode.source_lang);
+      const target = compact ? getShortLanguageLabel(mode.target_lang) : getLanguageLabel(mode.target_lang);
+      return `${source}\u2192${target}`;
+    }
+
+    function getModeDisplayLabel(mode) {
+      if (!mode) {
+        return '--';
+      }
+      return `${getTaskLabel(mode)} \u00b7 ${getDirectionLabel(mode)}`;
+    }
+
+    function getPendingReusePrompt(recordingId) {
+      if (state.locale === 'zh-CN') {
+        return `\u5df2\u9009\u62e9\u5f55\u97f3 #${recordingId}\uff0c\u8bf7\u5728\u4e0b\u65b9\u9009\u62e9\u8bed\u8a00\u65b9\u5411\u3002`;
+      }
+      return `Recording #${recordingId} selected. Choose a language direction below.`;
     }
 
     function getCurrentViewLabel() {
@@ -1007,8 +1064,11 @@
       if (state.activeKind === 'history') {
         return getMessage('nav.history');
       }
+      if (state.pendingReuseRecording) {
+        return `${getMessage('speech.recording_selected')} #${state.pendingReuseRecording.id}`;
+      }
       const activeMode = getActiveMode();
-      return activeMode ? getLeafLabel(activeMode.mode_key) : '--';
+      return activeMode ? getModeDisplayLabel(activeMode) : '--';
     }
 
     function getConstraintValue(labelKey) {
@@ -1070,13 +1130,6 @@
     function setFlowStatus(key, tone = 'info', raw = '') {
       state.flowStatus = { key, tone, raw };
       renderFlowStatus();
-    }
-
-    function appendMetaPill(container, text) {
-      const pill = document.createElement('span');
-      pill.className = 'meta-pill';
-      pill.textContent = text;
-      container.appendChild(pill);
     }
 
     function groupModes(modes) {
@@ -1217,22 +1270,35 @@
     }
 
     function describeSpeechSelection() {
+      const activeMode = getActiveMode();
+      const taskLabel = getTaskLabel(activeMode);
       const input = state.speechInput;
       if (state.isRecording) {
-        return `${getMessage('speech.recording_status_active')} ${formatSeconds(state.recordSeconds)} / ${formatSeconds(state.constraints?.max_record_seconds || 180)}`;
+        const progress = `${formatSeconds(state.recordSeconds)} / ${formatSeconds(state.constraints?.max_record_seconds || 180)}`;
+        if (state.locale === 'zh-CN') {
+          return `正在录音，停止后即可开始${taskLabel}。${progress}`;
+        }
+        return `Recording in progress. Stop when you are ready to start ${taskLabel}. ${progress}`;
       }
       if (input.sourceType === 'recording' && input.recordingId !== null) {
-        return `${getMessage('speech.recording_selected')} #${input.recordingId}`;
+        if (state.locale === 'zh-CN') {
+          return `已准备录音 #${input.recordingId}，开始后将执行${taskLabel}。`;
+        }
+        return `Recording #${input.recordingId} is ready. Start ${taskLabel} when you are ready.`;
       }
       if ((input.sourceType === 'record' || input.sourceType === 'upload') && input.fileName) {
-        return `${getMessage('speech.source_selected')} ${input.fileName} (${formatSeconds(input.durationSeconds)})`;
+        const duration = input.durationSeconds ? ` (${formatSeconds(input.durationSeconds)})` : '';
+        if (state.locale === 'zh-CN') {
+          return `已准备音频 ${input.fileName}${duration}，开始后将执行${taskLabel}。`;
+        }
+        return `Audio ${input.fileName}${duration} is ready. Start ${taskLabel} when you are ready.`;
       }
-      return getMessage('speech.recording_status_idle');
+      return getMessage(getTaskFlowKey(activeMode, 'idle'));
     }
 
     function setDefaultFlowStatus() {
       if (state.pendingReuseRecording) {
-        setFlowStatus('', 'info', `${getMessage('speech.use_recording')} #${state.pendingReuseRecording.id} / ${getMessage('text.mode_picker')}`);
+        setFlowStatus('', 'info', getPendingReusePrompt(state.pendingReuseRecording.id));
         return;
       }
       const activeMode = getActiveMode();
@@ -1244,11 +1310,7 @@
         setFlowStatus('status.ready', 'ready');
         return;
       }
-      if (isTextMode(activeMode)) {
-        setFlowStatus('text.input_hint', 'info');
-        return;
-      }
-      setFlowStatus('speech.input_hint', 'info');
+      setFlowStatus(getTaskFlowKey(activeMode, 'idle'), 'info');
     }
 
     function changeActiveView(kind, groupKey = state.activeGroupKey) {
@@ -1285,62 +1347,31 @@
       bindSecondaryNav('nav-history', 'history', getMessage('nav.history'));
     }
 
-    function renderBreadcrumb() {
-      const groupEl = document.getElementById('breadcrumb-group');
-      const leafEl = document.getElementById('breadcrumb-leaf');
-      if (state.activeKind === 'recordings') {
-        groupEl.textContent = getMessage('nav.recordings');
-        leafEl.textContent = '';
-        return;
-      }
-      if (state.activeKind === 'history') {
-        groupEl.textContent = getMessage('nav.history');
-        leafEl.textContent = '';
-        return;
-      }
+    function renderTaskHeader() {
       const activeMode = getActiveMode();
-      groupEl.textContent = getMessage(`nav.${state.activeGroupKey}`) || state.activeGroupKey;
-      leafEl.textContent = activeMode ? getLeafLabel(activeMode.mode_key) : '';
-    }
-
-    function renderSummary() {
-      const activeMode = getActiveMode();
-      const summaryMode = document.getElementById('summary-mode');
-      const summaryCaption = document.getElementById('summary-caption');
-      const summaryMeta = document.getElementById('summary-meta');
-      summaryMeta.innerHTML = '';
+      const title = document.getElementById('task-header-title');
+      const caption = document.getElementById('task-header-caption');
 
       if (state.activeKind === 'recordings') {
-        summaryMode.textContent = getMessage('nav.recordings');
-        summaryCaption.textContent = getMessage('speech.input_hint');
-        appendMetaPill(summaryMeta, `${getMessage('settings.max_recordings')} · ${state.constraints?.max_recordings ?? 5}`);
+        title.textContent = getMessage('nav.recordings');
+        caption.textContent = getMessage('task_header.recordings_caption');
         return;
       }
 
       if (state.activeKind === 'history') {
-        summaryMode.textContent = getMessage('nav.history');
-        summaryCaption.textContent = getMessage('history.full_caption');
-        appendMetaPill(summaryMeta, `${state.history.full.length} / ${state.constraints?.max_history ?? 5}`);
+        title.textContent = getMessage('nav.history');
+        caption.textContent = getMessage('history.full_caption');
         return;
       }
 
       if (state.pendingReuseRecording) {
-        summaryMode.textContent = `${getMessage('speech.use_recording')} #${state.pendingReuseRecording.id}`;
-        summaryCaption.textContent = getMessage('text.mode_picker');
-        appendMetaPill(summaryMeta, `${listSpeechReuseModes().length} ${getMessage('common.unit_sets')}`);
-        appendMetaPill(summaryMeta, getMessage('common.input_type.audio'));
+        title.textContent = getTaskLabel(state.activeGroupKey);
+        caption.textContent = getPendingReusePrompt(state.pendingReuseRecording.id);
         return;
       }
 
-      summaryMode.textContent = activeMode ? getLeafLabel(activeMode.mode_key) : '--';
-      summaryCaption.textContent = activeMode ? `${getMessage(`nav.${activeMode.group_key}`)} / ${getLeafLabel(activeMode.mode_key)}` : '';
-      if (!activeMode) {
-        return;
-      }
-
-      appendMetaPill(summaryMeta, `${getLanguageLabel(activeMode.source_lang)} → ${getLanguageLabel(activeMode.target_lang)}`);
-      appendMetaPill(summaryMeta, `${getInputTypeLabel(activeMode.input_type)} → ${getOutputTypeLabel(activeMode.output_type)}`);
-      appendMetaPill(summaryMeta, getMessage(`nav.${activeMode.group_key}`));
+      title.textContent = activeMode ? getTaskLabel(activeMode) : '--';
+      caption.textContent = activeMode ? getDirectionLabel(activeMode) : getMessage('task_header.pick_direction');
     }
 
     function renderUtilityPanels() {
@@ -1414,7 +1445,8 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'mode-pill';
-        button.textContent = getLeafLabel(mode.mode_key);
+        button.textContent = getDirectionLabel(mode, true);
+        button.title = getLeafLabel(mode.mode_key);
         button.classList.toggle('is-active', !reuseRecording && mode.mode_key === state.activeModeKey);
         button.onclick = () => {
           if (reuseRecording) {
@@ -1471,7 +1503,7 @@
           <div class="recording-head">
             <div>
               <p class="recording-title">#${recording.id}</p>
-              <p class="recording-meta">${recording.created_at} · ${formatSeconds(recording.duration_seconds)}</p>
+              <p class="recording-meta">${recording.created_at} \u00b7 ${formatSeconds(recording.duration_seconds)}</p>
             </div>
             <button type="button" class="recording-action">${getMessage('speech.use_recording')}</button>
           </div>
@@ -1489,7 +1521,7 @@
             duration_seconds: recording.duration_seconds || 0,
           };
           resetResultForModeChange();
-          setFlowStatus('', 'info', `${getMessage('speech.use_recording')} #${recording.id} / ${getMessage('text.mode_picker')}`);
+          setFlowStatus('', 'info', getPendingReusePrompt(recording.id));
           renderShell();
         };
         list.appendChild(card);
@@ -1500,7 +1532,6 @@
       const activeMode = getActiveMode();
       const isText = state.activeKind === 'group' && isTextMode(activeMode);
       const isSpeech = state.activeKind === 'group' && isSpeechMode(activeMode);
-      const activeModeKey = document.getElementById('active-mode-key');
       const textSection = document.getElementById('text-input-section');
       const speechSection = document.getElementById('speech-input-section');
       const textInput = document.getElementById('text-input');
@@ -1516,12 +1547,9 @@
       const speechPreviewPlayer = document.getElementById('speech-preview-player');
       const speechHint = document.getElementById('speech-input-hint');
       const speechSourceStatus = document.getElementById('speech-source-status');
-      const controlCaption = document.getElementById('control-panel-caption');
       const outputCaption = document.getElementById('output-panel-caption');
       const historyCaption = document.getElementById('history-panel-caption');
       const textHint = document.getElementById('text-input-hint');
-
-      activeModeKey.textContent = activeMode ? activeMode.mode_key : '--';
 
       textSection.hidden = !isText;
       speechSection.hidden = !isSpeech;
@@ -1552,16 +1580,13 @@
       if (isText && activeMode) {
         textInput.placeholder = getMessage(activeMode.source_lang === 'zh' ? 'text.placeholder.zh' : 'text.placeholder.en');
         textHint.textContent = getMessage('text.input_hint');
-        controlCaption.textContent = getMessage('text.input_saved');
-        outputCaption.textContent = getMessage('text.result_empty');
+        outputCaption.textContent = getMessage(getResultCaptionKey(activeMode));
       } else if (isSpeech) {
         textHint.textContent = '';
-        controlCaption.textContent = getMessage('speech.input_hint');
-        outputCaption.textContent = getMessage('speech.source_selected');
+        outputCaption.textContent = getMessage(getResultCaptionKey(activeMode));
       } else {
         textInput.placeholder = getMessage('text.non_text_mode_pending');
         textHint.textContent = getMessage('text.non_text_mode_pending');
-        controlCaption.textContent = getMessage('text.non_text_mode_pending');
         outputCaption.textContent = getMessage('text.non_text_mode_pending');
       }
 
@@ -1613,6 +1638,64 @@
       saveButton.disabled = true;
     }
 
+    function buildResultNarrative(mode, sourceText, outputText, inputAudioUrl, outputAudioUrl) {
+      const narrative = [];
+
+      if (outputAudioUrl) {
+        narrative.push({
+          blockId: 'result-audio-block',
+          labelId: 'result-audio-label',
+          labelKey: 'result.label.final_audio',
+          isFinal: true,
+        });
+      } else if (outputText) {
+        narrative.push({
+          blockId: 'result-output-block',
+          labelId: 'result-output-label',
+          labelKey: 'result.label.final_text',
+          isFinal: true,
+        });
+      }
+
+      if (outputAudioUrl && outputText) {
+        narrative.push({
+          blockId: 'result-output-block',
+          labelId: 'result-output-label',
+          labelKey: 'result.label.target_text',
+          isFinal: false,
+        });
+      }
+
+      if (inputAudioUrl && sourceText && sourceText !== outputText) {
+        narrative.push({
+          blockId: 'result-source-block',
+          labelId: 'result-source-label',
+          labelKey: 'result.label.transcript',
+          isFinal: false,
+        });
+      }
+
+      if (mode.input_type === 'text' && sourceText) {
+        narrative.push({
+          blockId: 'result-source-block',
+          labelId: 'result-source-label',
+          labelKey: 'result.label.original_text',
+          isFinal: false,
+        });
+      }
+
+      if (mode.input_type === 'audio' && inputAudioUrl) {
+        narrative.push({
+          blockId: 'result-source-audio-block',
+          labelId: 'result-source-audio-label',
+          labelKey: 'result.label.original_audio',
+          isFinal: false,
+        });
+      }
+
+      return narrative;
+    }
+
     function renderResult() {
       const activeMode = getActiveMode();
       const empty = document.getElementById('text-result-empty');
@@ -1621,6 +1704,7 @@
       const sourceBlock = document.getElementById('result-source-block');
       const outputBlock = document.getElementById('result-output-block');
       const audioBlock = document.getElementById('result-audio-block');
+      const actionRow = document.getElementById('result-actions');
       const copyButton = document.getElementById('text-copy-button');
       const downloadLink = document.getElementById('text-download-link');
       const sourceAudioPlayer = document.getElementById('result-source-audio-player');
@@ -1628,7 +1712,7 @@
 
       if (!activeMode || !state.lastResult || state.lastResult.modeKey !== activeMode.mode_key) {
         empty.hidden = false;
-        empty.textContent = isSpeechMode(activeMode) ? getMessage('speech.input_hint') : getMessage('text.result_empty');
+        empty.textContent = getMessage(getResultEmptyKey(activeMode));
         result.hidden = true;
         sourceAudioPlayer.removeAttribute('src');
         outputAudioPlayer.removeAttribute('src');
@@ -1660,6 +1744,30 @@
       downloadLink.href = outputAudioUrl || '#';
       downloadLink.textContent = getMessage('text.download_audio');
       copyButton.textContent = getMessage('text.copy_output');
+      actionRow.hidden = copyButton.hidden && downloadLink.hidden;
+
+      [sourceAudioBlock, sourceBlock, outputBlock, audioBlock].forEach((block) => block.classList.remove('is-final'));
+
+      const narrative = buildResultNarrative(activeMode, sourceText, outputText, inputAudioUrl, outputAudioUrl);
+      const orderedChildren = [];
+
+      narrative.forEach((item, index) => {
+        const block = document.getElementById(item.blockId);
+        const label = document.getElementById(item.labelId);
+        block.hidden = false;
+        block.classList.toggle('is-final', item.isFinal);
+        label.textContent = getMessage(item.labelKey);
+        orderedChildren.push(block);
+        if (index === 0 && !actionRow.hidden) {
+          orderedChildren.push(actionRow);
+        }
+      });
+
+      if (!orderedChildren.length && !actionRow.hidden) {
+        orderedChildren.push(actionRow);
+      }
+
+      result.replaceChildren(...orderedChildren);
 
       empty.hidden = true;
       result.hidden = false;
@@ -1683,7 +1791,7 @@
       title.textContent = getLeafLabel(item.mode_key);
       const meta = document.createElement('p');
       meta.className = 'history-meta';
-      meta.textContent = `#${item.id} · ${item.created_at}`;
+      meta.textContent = `#${item.id} \u00b7 ${item.created_at}`;
       textBlock.append(title, meta);
 
       const kindPill = document.createElement('span');
@@ -1724,7 +1832,7 @@
       title.textContent = getLeafLabel(item.mode_key);
       const meta = document.createElement('p');
       meta.className = 'history-meta';
-      meta.textContent = `#${item.id} · ${item.created_at} · ${getLanguageLabel(item.source_lang)} → ${getLanguageLabel(item.target_lang)}`;
+      meta.textContent = `#${item.id} \u00b7 ${item.created_at} \u00b7 ${getLanguageLabel(item.source_lang)} \u2192 ${getLanguageLabel(item.target_lang)}`;
       summaryText.append(title, meta);
 
       const summaryPill = document.createElement('span');
@@ -1839,17 +1947,16 @@
     function renderStatus() {
       const labelKey = state.healthOk ? 'status.ready' : 'status.error';
       const label = getMessage(labelKey);
-      document.getElementById('summary-status-label').textContent = label;
+      document.getElementById('task-header-status-label').textContent = label;
       document.getElementById('footer-status-label').textContent = label;
-      document.getElementById('summary-status').classList.toggle('is-error', !state.healthOk);
+      document.getElementById('task-header-status').classList.toggle('is-error', !state.healthOk);
       document.getElementById('footer-status').classList.toggle('is-error', !state.healthOk);
     }
 
     function renderShell() {
       setTextByKey();
       renderNav();
-      renderBreadcrumb();
-      renderSummary();
+      renderTaskHeader();
       renderUtilityPanels();
       renderViewVisibility();
       renderModePicker();
@@ -1941,7 +2048,7 @@
         previewUrlOwned: true,
         durationSeconds,
       });
-      setFlowStatus('speech.recording_status_ready', 'ready');
+      setFlowStatus('', 'ready', describeSpeechSelection());
       renderShell();
     }
 
@@ -1981,7 +2088,7 @@
         state.recordingRuntime = { stream, audioContext, source, processor, chunks, sampleRate: audioContext.sampleRate };
         state.isRecording = true;
         state.recordSeconds = 0;
-        setFlowStatus('speech.recording_status_active', 'processing');
+        setFlowStatus('', 'processing', describeSpeechSelection());
         state.recordTimerId = window.setInterval(() => {
           state.recordSeconds += 1;
           const maxSeconds = state.constraints?.max_record_seconds || 180;
@@ -2057,7 +2164,7 @@
         state.history.focusId = null;
       }
       renderHistoryManagement();
-      renderSummary();
+      renderTaskHeader();
     }
 
     async function loadHistoryData() {
@@ -2149,7 +2256,7 @@
           durationSeconds: 0,
         });
         resetResultForModeChange();
-        setFlowStatus('speech.source_selected', 'ready', `${getMessage('speech.source_selected')} ${file.name}`);
+        setFlowStatus('', 'ready', describeSpeechSelection());
         renderShell();
       } catch (_error) {
         setFlowStatus('speech.upload_failed', 'error');
@@ -2256,7 +2363,7 @@
       }
       state.lastResult = { modeKey: activeMode.mode_key, payload };
       await loadHistoryData();
-      setFlowStatus('text.result_ready', 'ready');
+      setFlowStatus(getTaskFlowKey(activeMode, 'ready'), 'ready');
     }
 
     async function submitSpeechConversion(activeMode) {
@@ -2290,7 +2397,7 @@
       }
       state.lastResult = { modeKey: activeMode.mode_key, payload };
       await loadHistoryData();
-      setFlowStatus('speech.result_ready', 'ready');
+      setFlowStatus(getTaskFlowKey(activeMode, 'ready'), 'ready');
     }
 
     async function handleStart() {
@@ -2302,7 +2409,7 @@
 
       state.isSubmitting = true;
       renderActionButtons();
-      setFlowStatus(isSpeechMode(activeMode) ? 'speech.processing' : 'text.processing', 'processing');
+      setFlowStatus(getTaskFlowKey(activeMode, 'processing'), 'processing');
 
       try {
         if (isTextMode(activeMode)) {

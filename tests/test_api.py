@@ -44,6 +44,30 @@ def test_health_returns_200(client):
     assert data["status"] == "ok"
 
 
+def test_index_uses_task_header_without_breadcrumb(client):
+    resp = client.get("/")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'id="app-task-header"' in html
+    assert 'id="app-breadcrumb"' not in html
+    assert 'id="active-mode-key"' not in html
+
+
+def test_index_uses_workbench_layout_without_control_panel(client):
+    resp = client.get("/")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'id="app-shell-grid"' in html
+    assert 'workbench-grid' in html
+    assert 'id="app-control-panel"' not in html
+    assert 'id="app-input-panel"' in html
+    assert 'id="app-output-panel"' in html
+    assert 'id="app-history-panel"' in html
+    assert 'id="text-flow-status"' in html
+
+
 def test_bootstrap_returns_atomic_contract(client, mock_config):
     resp = client.get("/api/bootstrap")
 
@@ -100,6 +124,7 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "a11y.primary_navigation",
         "a11y.breadcrumb",
         "a11y.current_mode_summary",
+        "a11y.current_task_header",
         "a11y.mode_picker",
         "nav.same_text_to_speech",
         "nav.same_speech_to_text",
@@ -145,6 +170,37 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "common.input_type.audio",
         "common.output_type.text",
         "common.output_type.audio",
+        "task.text_to_speech",
+        "task.speech_to_text",
+        "task.text_to_text",
+        "task.speech_to_speech",
+        "task_header.current_task",
+        "task_header.pick_direction",
+        "task_header.recordings_caption",
+        "flow.idle.text_to_speech",
+        "flow.idle.text_to_text",
+        "flow.idle.speech_to_text",
+        "flow.idle.speech_to_speech",
+        "flow.processing.text_to_speech",
+        "flow.processing.text_to_text",
+        "flow.processing.speech_to_text",
+        "flow.processing.speech_to_speech",
+        "flow.ready.text_to_speech",
+        "flow.ready.text_to_text",
+        "flow.ready.speech_to_text",
+        "flow.ready.speech_to_speech",
+        "result.caption.text_to_speech",
+        "result.caption.text_to_text",
+        "result.caption.speech_to_text",
+        "result.caption.speech_to_speech",
+        "result.empty.text",
+        "result.empty.audio",
+        "result.label.final_text",
+        "result.label.final_audio",
+        "result.label.target_text",
+        "result.label.transcript",
+        "result.label.original_text",
+        "result.label.original_audio",
         "common.unit_seconds",
         "common.unit_sets",
         "history.recent_caption",
@@ -248,9 +304,24 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     en = data["i18n"]["en-US"]
 
     assert zh["header.title"] == "语音文本处理中心"
-    assert zh["nav.same_text_to_speech"] == "同语言文字转语音"
+    assert zh["nav.same_text_to_speech"] == "同语·文字→语音"
+    assert zh["task.text_to_speech"] == "文字→语音"
+    assert zh["task_header.current_task"] == "当前任务"
+    assert zh["task_header.pick_direction"] == "请选择语言方向"
+    assert zh["task_header.recordings_caption"].startswith("可在这里查看录音")
+    assert zh["flow.processing.text_to_speech"] == "正在生成目标语音，请稍候。"
+    assert zh["flow.ready.speech_to_text"] == "目标文本已生成，原始语音可在下方回听。"
+    assert zh["result.caption.speech_to_speech"] == "最终语音会优先显示在这里，中间文本与原始语音会放在后面。"
+    assert zh["result.label.final_audio"] == "最终语音结果"
+    assert zh["result.label.original_text"] == "原始输入文本"
+    assert zh["panel.input"] == "输入与操作"
+    assert zh["panel.output"] == "输出结果"
+    assert zh["panel.history"] == "最近历史"
+    assert zh["text.mode_picker"] == "语言方向"
+    assert zh["text.result_empty"] == "转换结果会显示在这里。"
     assert zh["text.start"] == "开始转换"
     assert zh["speech.record_start"] == "开始录音"
+    assert zh["speech.input_hint"] == "可直接录音、上传 WAV，或复用已有录音后开始转换。"
     assert zh["history.view_all"] == "查看全部历史"
     assert zh["history.delete"] == "删除记录"
     assert zh["panel.help"] == "帮助面板"
@@ -258,7 +329,19 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["mode.tts_zh_zh"] == "中文文字转中文语音"
     assert "?" not in zh["header.title"]
     assert en["header.language_switch"] == "中文"
-    assert en["speech.use_recording"] == "Use recording"
+    assert en["a11y.current_task_header"] == "Current task header"
+    assert en["task_header.current_task"] == "Current task"
+    assert en["task_header.pick_direction"] == "Choose a language direction"
+    assert en["task_header.recordings_caption"].startswith("Review saved recordings")
+    assert en["flow.processing.text_to_speech"] == "Generating the final audio result. Please wait."
+    assert en["flow.ready.speech_to_text"] == "The final text result is ready, and the source audio stays below for replay."
+    assert en["result.caption.speech_to_speech"] == "The final audio result appears first, with intermediate text and the source audio placed after it."
+    assert en["result.label.transcript"] == "Intermediate transcript"
+    assert en["panel.input"] == "Input & actions"
+    assert en["panel.output"] == "Results"
+    assert en["speech.use_recording"] == "Use this recording"
+    assert en["task.speech_to_text"] == "Speech→Text"
+    assert en["speech.input_hint"] == "Record in browser, upload a WAV, or reuse a saved recording before you start."
     assert en["history.full_title"] == "History management"
     assert en["history.export"] == "Export history"
     assert en["panel.settings"] == "Settings panel"

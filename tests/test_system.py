@@ -39,15 +39,16 @@ def test_root_route_renders_req1_shell_landmarks(client) -> None:
         'id="app-shell"',
         'id="app-header"',
         'id="app-sidebar"',
-        'id="app-breadcrumb"',
         'id="app-main"',
+        'id="app-shell-grid"',
+        'id="app-task-header"',
         'id="app-footer"',
         'id="app-input-panel"',
-        'id="app-control-panel"',
         'id="app-output-panel"',
         'id="app-history-panel"',
     ):
         assert marker in html
+    assert 'id="app-control-panel"' not in html
 
 
 def test_root_route_exposes_shell_navigation_and_header_controls(client) -> None:
@@ -79,6 +80,7 @@ def test_root_route_exposes_text_mode_controls(client) -> None:
         'id="text-reset-button"',
         'id="text-save-button"',
         'id="text-result"',
+        'id="result-actions"',
         'id="text-copy-button"',
         'id="text-download-link"',
     ):
@@ -127,8 +129,22 @@ def test_root_route_exposes_recording_reuse_mode_picker_contract(client) -> None
 
     assert "state.pendingReuseRecording = {" in html
     assert "getMessage('speech.use_recording')" in html
-    assert "getMessage('text.mode_picker')" in html
+    assert "getPendingReusePrompt(" in html
     assert "formData.append('recording_id', String(state.speechInput.recordingId));" in html
+
+
+def test_root_route_exposes_result_first_narrative_helpers(client) -> None:
+    resp = client.get("/")
+    html = resp.get_data(as_text=True)
+
+    for marker in (
+        "function getTaskFlowKey(",
+        "function getResultCaptionKey(",
+        "function getResultEmptyKey(",
+        "function buildResultNarrative(",
+        "result.replaceChildren(...orderedChildren);",
+    ):
+        assert marker in html
 
 
 def test_root_route_exposes_history_ui_controls(client) -> None:
@@ -165,8 +181,7 @@ def test_root_route_exposes_help_settings_and_locale_polish_controls(client) -> 
         'id="settings-current-view"',
         'id="settings-constraints-list"',
         'data-i18n-attr="aria-label:a11y.primary_navigation"',
-        'data-i18n-attr="aria-label:a11y.breadcrumb"',
-        'data-i18n-attr="aria-label:a11y.current_mode_summary"',
+        'data-i18n-attr="aria-label:a11y.current_task_header"',
         'data-i18n-attr="aria-label:a11y.mode_picker"',
     ):
         assert marker in html
