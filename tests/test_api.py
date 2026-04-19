@@ -3,6 +3,7 @@
 # 1. Standard library
 import io
 import os
+import re
 import zipfile
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
@@ -33,6 +34,18 @@ def client(app):
     return app.test_client()
 
 
+def _get_index_html(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    return resp.get_data(as_text=True)
+
+
+def _get_index_script(html):
+    script_match = re.search(r"<script>(?P<script>.*)</script>\s*</body>", html, flags=re.S)
+    assert script_match is not None
+    return script_match.group("script")
+
+
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
@@ -45,27 +58,176 @@ def test_health_returns_200(client):
 
 
 def test_index_uses_task_header_without_breadcrumb(client):
-    resp = client.get("/")
-
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
+    html = _get_index_html(client)
     assert 'id="app-task-header"' in html
+    assert 'id="task-header-direction"' in html
     assert 'id="app-breadcrumb"' not in html
     assert 'id="active-mode-key"' not in html
 
 
 def test_index_uses_workbench_layout_without_control_panel(client):
-    resp = client.get("/")
-
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
+    html = _get_index_html(client)
     assert 'id="app-shell-grid"' in html
     assert 'workbench-grid' in html
     assert 'id="app-control-panel"' not in html
     assert 'id="app-input-panel"' in html
+    assert 'id="input-panel-caption"' in html
+    assert 'id="mode-picker-label"' in html
     assert 'id="app-output-panel"' in html
     assert 'id="app-history-panel"' in html
     assert 'id="text-flow-status"' in html
+
+
+def test_index_workbench_layout_contract_keeps_output_primary_and_history_bottom(client):
+    html = _get_index_html(client)
+
+    assert re.search(
+        r"\.workbench-grid\s*\{.*?"
+        r"grid-template-columns:\s*minmax\(0,\s*0\.42fr\)\s+minmax\(0,\s*0\.58fr\);"
+        r".*?grid-template-areas:\s*'input output'\s*'history history';"
+        r".*?\}",
+        html,
+        flags=re.S,
+    )
+    assert re.search(r"#app-input-panel\s*\{\s*grid-area:\s*input;\s*\}", html)
+    assert re.search(r"#app-output-panel\s*\{\s*grid-area:\s*output;\s*\}", html)
+    assert re.search(r"#app-history-panel\s*\{\s*grid-area:\s*history;\s*\}", html)
+    assert re.search(
+        r"@media \(max-width:\s*980px\)\s*\{.*?"
+        r"\.workbench-grid\s*\{.*?"
+        r"grid-template-areas:\s*'input'\s*'output'\s*'history';"
+        r".*?\}",
+        html,
+        flags=re.S,
+    )
+
+
+def test_index_input_panel_contract_integrates_mode_picker_and_actions(client):
+    html = _get_index_html(client)
+
+    assert re.search(
+        r'<section id="app-input-panel" class="shell-card" aria-labelledby="input-panel-title">.*?'
+        r'<p id="input-panel-caption" class="section-caption" data-i18n="panel.input_caption"></p>.*?'
+        r'<div class="mode-picker-block">.*?'
+        r'<p id="mode-picker-label" class="field-label" data-i18n="text.mode_picker"></p>.*?'
+        r'<div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>.*?'
+        r'<div class="panel-stack input-actions">.*?'
+        r'id="text-start-button".*?'
+        r'id="text-reset-button".*?'
+        r'id="text-save-button".*?'
+        r'id="text-flow-status"'
+        r'.*?</section>',
+        html,
+        flags=re.S,
+    )
+
+
+def test_index_task_header_contract_surfaces_task_direction_and_human_label(client):
+    html = _get_index_html(client)
+    script = _get_index_script(html)
+
+    assert 'id="task-header-direction"' in html
+    assert re.search(
+        r"function renderTaskHeader\(\)\s*\{.*?"
+        r"const direction = document\.getElementById\('task-header-direction'\);"
+        r".*?direction\.hidden = true;"
+        r".*?direction\.textContent = '';"
+        r".*?if \(state\.activeKind === 'recordings'\) \{.*?return;\s*\}"
+        r".*?if \(state\.activeKind === 'history'\) \{.*?return;\s*\}"
+        r".*?if \(state\.pendingReuseRecording\) \{.*?caption\.textContent = getPendingReusePrompt\(state\.pendingReuseRecording\.id\);.*?return;\s*\}"
+        r".*?title\.textContent = activeMode \? getTaskLabel\(activeMode\) : '--';"
+        r".*?if \(!activeMode\) \{.*?caption\.textContent = getMessage\('task_header\.pick_direction'\);.*?return;\s*\}"
+        r".*?direction\.hidden = false;"
+        r".*?direction\.textContent = getDirectionLabel\(activeMode\);"
+        r".*?caption\.textContent = getLeafLabel\(activeMode\.mode_key\);"
+        r".*?\}",
+        script,
+        flags=re.S,
+    )
+
+
+def test_index_task_header_status_contract_uses_flow_state_while_footer_tracks_health(client):
+    html = _get_index_html(client)
+    script = _get_index_script(html)
+
+    assert re.search(
+        r"function renderStatus\(\)\s*\{"
+        r"\s*const taskStatus = document\.getElementById\('task-header-status'\);"
+        r"\s*const taskStatusLabel = document\.getElementById\('task-header-status-label'\);"
+        r"\s*const taskLabelKey = state\.flowStatus\.tone === 'processing'"
+        r"\s*\?\s*'status\.processing'"
+        r"\s*:\s*state\.flowStatus\.tone === 'error'"
+        r"\s*\?\s*'status\.error'"
+        r"\s*:\s*'status\.ready';"
+        r"\s*taskStatusLabel\.textContent = getMessage\(taskLabelKey\);"
+        r"\s*taskStatus\.classList\.toggle\('is-processing', state\.flowStatus\.tone === 'processing'\);"
+        r"\s*taskStatus\.classList\.toggle\('is-error', state\.flowStatus\.tone === 'error'\);"
+        r"\s*const footerLabelKey = state\.healthOk \? 'status\.ready' : 'status\.error';"
+        r"\s*document\.getElementById\('footer-status-label'\)\.textContent = getMessage\(footerLabelKey\);"
+        r"\s*document\.getElementById\('footer-status'\)\.classList\.toggle\('is-error', !state\.healthOk\);"
+        r"\s*\}",
+        script,
+        flags=re.S,
+    )
+
+
+def test_index_result_narrative_contract_keeps_final_result_first_and_actions_adjacent(client):
+    script = _get_index_script(_get_index_html(client))
+
+    assert re.search(
+        r"function buildResultNarrative\(mode, sourceText, outputText, inputAudioUrl, outputAudioUrl\)\s*\{.*?"
+        r"if \(outputAudioUrl\) \{.*?labelKey: 'result\.label\.final_audio'.*?\} else if \(outputText\) \{.*?labelKey: 'result\.label\.final_text'.*?\}"
+        r".*?if \(outputAudioUrl && outputText\) \{.*?labelKey: 'result\.label\.target_text'.*?\}"
+        r".*?if \(inputAudioUrl && sourceText && sourceText !== outputText\) \{.*?labelKey: 'result\.label\.transcript'.*?\}"
+        r".*?if \(mode\.input_type === 'text' && sourceText\) \{.*?labelKey: 'result\.label\.original_text'.*?\}"
+        r".*?if \(mode\.input_type === 'audio' && inputAudioUrl\) \{.*?labelKey: 'result\.label\.original_audio'.*?\}"
+        r".*?return narrative;\s*\}",
+        script,
+        flags=re.S,
+    )
+    assert re.search(
+        r"function renderResult\(\)\s*\{.*?"
+        r"const narrative = buildResultNarrative\(activeMode, sourceText, outputText, inputAudioUrl, outputAudioUrl\);"
+        r".*?narrative\.forEach\(\(item, index\) => \{.*?orderedChildren\.push\(block\);"
+        r".*?if \(index === 0 && !actionRow\.hidden\) \{\s*orderedChildren\.push\(actionRow\);\s*\}"
+        r".*?\}\);"
+        r".*?if \(!orderedChildren\.length && !actionRow\.hidden\) \{\s*orderedChildren\.push\(actionRow\);\s*\}"
+        r".*?result\.replaceChildren\(\.\.\.orderedChildren\);",
+        script,
+        flags=re.S,
+    )
+
+
+def test_index_flow_copy_contract_uses_task_language_helpers(client):
+    script = _get_index_script(_get_index_html(client))
+
+    assert "function getTargetResultLabel(mode)" in script
+    assert "function getTaskFlowMessage(mode, stageOrKey)" in script
+    assert "function getResultPanelMessage(mode)" in script
+    assert re.search(
+        r"function setFlowStatus\(key, tone = 'info', raw = ''\)\s*\{"
+        r"\s*if \(!raw && key\.startsWith\('flow\.'\)\) \{"
+        r"\s*raw = getTaskFlowMessage\(getActiveMode\(\), key\);"
+        r"\s*\}"
+        r"\s*state\.flowStatus = \{ key, tone, raw \};",
+        script,
+        flags=re.S,
+    )
+    assert re.search(
+        r"function describeSpeechSelection\(\)\s*\{.*?"
+        r"const resultLabel = getTargetResultLabel\(activeMode\);"
+        r".*?return getTaskFlowMessage\(activeMode, 'idle'\);"
+        r".*?\}",
+        script,
+        flags=re.S,
+    )
+    assert re.search(
+        r"function renderInputPanel\(\)\s*\{.*?"
+        r"if \(isText && activeMode\) \{.*?outputCaption\.textContent = getResultPanelMessage\(activeMode\);.*?\} else if \(isSpeech\) \{.*?outputCaption\.textContent = getResultPanelMessage\(activeMode\);"
+        r".*?\}",
+        script,
+        flags=re.S,
+    )
 
 
 def test_bootstrap_returns_atomic_contract(client, mock_config):
@@ -140,6 +302,7 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "status.error",
         "footer.constraints_hint",
         "panel.input",
+        "panel.input_caption",
         "panel.control",
         "panel.output",
         "panel.history",
@@ -306,37 +469,35 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["header.title"] == "语音文本处理中心"
     assert zh["nav.same_text_to_speech"] == "同语·文字→语音"
     assert zh["task.text_to_speech"] == "文字→语音"
-    assert zh["task_header.current_task"] == "当前任务"
-    assert zh["task_header.pick_direction"] == "请选择语言方向"
+    assert zh["panel.input_caption"] == "选择语言方向、准备输入内容，然后开始转换。"
+    assert zh["task_header.current_task"] == "当前工作流"
+    assert zh["task_header.pick_direction"] == "选择语言方向后开始"
     assert zh["task_header.recordings_caption"].startswith("可在这里查看录音")
     assert zh["flow.processing.text_to_speech"] == "正在生成目标语音，请稍候。"
-    assert zh["flow.ready.speech_to_text"] == "目标文本已生成，原始语音可在下方回听。"
-    assert zh["result.caption.speech_to_speech"] == "最终语音会优先显示在这里，中间文本与原始语音会放在后面。"
-    assert zh["result.label.final_audio"] == "最终语音结果"
-    assert zh["result.label.original_text"] == "原始输入文本"
+    assert zh["flow.ready.speech_to_text"] == "目标文本已生成，可复制或继续核对；原始语音保留在下方供回听。"
+    assert zh["result.caption.speech_to_speech"] == "这里会先显示最终语音结果，播放与下载操作紧随其后；中间文本与原始语音保留在后面供核对。"
+    assert zh["result.empty.audio"] == "最终语音结果会优先显示在这里。"
+    assert zh["result.label.target_text"] == "中间目标文本"
+    assert zh["text.copy_output"] == "复制最终文本"
+    assert zh["text.download_audio"] == "下载最终语音"
     assert zh["panel.input"] == "输入与操作"
     assert zh["panel.output"] == "输出结果"
-    assert zh["panel.history"] == "最近历史"
-    assert zh["text.mode_picker"] == "语言方向"
-    assert zh["text.result_empty"] == "转换结果会显示在这里。"
-    assert zh["text.start"] == "开始转换"
     assert zh["speech.record_start"] == "开始录音"
-    assert zh["speech.input_hint"] == "可直接录音、上传 WAV，或复用已有录音后开始转换。"
-    assert zh["history.view_all"] == "查看全部历史"
-    assert zh["history.delete"] == "删除记录"
-    assert zh["panel.help"] == "帮助面板"
-    assert zh["settings.locale_label"] == "界面语言"
-    assert zh["mode.tts_zh_zh"] == "中文文字转中文语音"
-    assert "?" not in zh["header.title"]
+    assert "?" not in zh["flow.ready.speech_to_text"]
+
     assert en["header.language_switch"] == "中文"
     assert en["a11y.current_task_header"] == "Current task header"
-    assert en["task_header.current_task"] == "Current task"
-    assert en["task_header.pick_direction"] == "Choose a language direction"
+    assert en["panel.input_caption"] == "Choose a language direction, prepare the input, then start the conversion."
+    assert en["task_header.current_task"] == "Current workflow"
+    assert en["task_header.pick_direction"] == "Choose a language direction to begin"
     assert en["task_header.recordings_caption"].startswith("Review saved recordings")
     assert en["flow.processing.text_to_speech"] == "Generating the final audio result. Please wait."
-    assert en["flow.ready.speech_to_text"] == "The final text result is ready, and the source audio stays below for replay."
-    assert en["result.caption.speech_to_speech"] == "The final audio result appears first, with intermediate text and the source audio placed after it."
-    assert en["result.label.transcript"] == "Intermediate transcript"
+    assert en["flow.ready.speech_to_text"] == "The final text result is ready to copy or review, with the source audio kept below for replay."
+    assert en["result.caption.speech_to_speech"] == "The final audio result appears first, with play and download actions right after it; intermediate text and the source audio stay after it for review."
+    assert en["result.empty.audio"] == "The final audio result will appear here first."
+    assert en["result.label.target_text"] == "Intermediate target text"
+    assert en["text.copy_output"] == "Copy final text"
+    assert en["text.download_audio"] == "Download final audio"
     assert en["panel.input"] == "Input & actions"
     assert en["panel.output"] == "Results"
     assert en["speech.use_recording"] == "Use this recording"

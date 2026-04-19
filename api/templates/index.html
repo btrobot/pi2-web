@@ -268,6 +268,14 @@
       font-size: 1.08rem;
     }
 
+    .task-header-direction {
+      margin: 8px 0 0;
+      color: var(--text);
+      font-size: 0.94rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
     .task-header-caption,
     .section-caption,
     .field-label,
@@ -306,6 +314,9 @@
 
     .workbench-grid {
       grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
+      grid-template-areas:
+        'input output'
+        'history history';
       align-items: start;
     }
 
@@ -318,14 +329,33 @@
 
     .workbench-grid .shell-card {
       min-height: 0;
+      gap: 14px;
     }
 
     .input-actions {
       gap: 12px;
     }
 
-    .workbench-grid > #app-history-panel {
-      grid-column: 1 / -1;
+    #app-input-panel {
+      grid-area: input;
+    }
+
+    #app-output-panel {
+      grid-area: output;
+    }
+
+    #app-history-panel {
+      grid-area: history;
+    }
+
+    .mode-picker-block {
+      display: grid;
+      gap: 10px;
+    }
+
+    .workbench-grid .input-actions {
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
     }
 
     .shell-card-title,
@@ -352,7 +382,7 @@
 
     .text-input {
       width: 100%;
-      min-height: 188px;
+      min-height: 160px;
       resize: vertical;
       padding: 14px 16px;
       border-radius: 16px;
@@ -479,6 +509,11 @@
       color: var(--success);
       min-width: auto;
       gap: 8px;
+    }
+
+    .status-pill.is-processing {
+      background: rgba(184, 114, 17, 0.12);
+      color: var(--warning);
     }
 
     .status-pill.is-error,
@@ -627,6 +662,13 @@
       .shell-grid {
         grid-template-columns: 1fr;
       }
+
+      .workbench-grid {
+        grid-template-areas:
+          'input'
+          'output'
+          'history';
+      }
     }
 
     @media (max-width: 720px) {
@@ -686,6 +728,7 @@
               <div>
                 <p class="task-header-label" data-i18n="task_header.current_task"></p>
                 <h2 id="task-header-title" class="task-header-title">--</h2>
+                <p id="task-header-direction" class="task-header-direction" hidden></p>
                 <p id="task-header-caption" class="task-header-caption"></p>
               </div>
               <div class="status-row">
@@ -767,11 +810,14 @@
               <div class="shell-card-head">
                 <div>
                   <h3 id="input-panel-title" class="shell-card-title" data-i18n="panel.input"></h3>
-                  <p id="mode-picker-caption" class="section-caption" data-i18n="text.mode_picker"></p>
+                  <p id="input-panel-caption" class="section-caption" data-i18n="panel.input_caption"></p>
                 </div>
               </div>
 
-              <div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>
+              <div class="mode-picker-block">
+                <p id="mode-picker-label" class="field-label" data-i18n="text.mode_picker"></p>
+                <div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>
+              </div>
 
               <div id="text-input-section" class="panel-stack">
                 <label class="field-label" for="text-input" data-i18n="text.input_label"></label>
@@ -1006,16 +1052,96 @@
       return variant ? `flow.${stage}.${variant}` : 'status.ready';
     }
 
-    function getResultCaptionKey(modeOrGroupKey) {
-      const variant = getTaskVariant(modeOrGroupKey);
-      return variant ? `result.caption.${variant}` : 'text.result_empty';
-    }
-
     function getResultEmptyKey(mode) {
       if (!mode) {
         return 'text.result_empty';
       }
       return mode.output_type === 'audio' ? 'result.empty.audio' : 'result.empty.text';
+    }
+
+    function getTargetResultLabel(mode) {
+      if (!mode) {
+        return state.locale === 'zh-CN' ? '\u7ed3\u679c' : 'the result';
+      }
+      const language = getLanguageLabel(mode.target_lang);
+      if (state.locale === 'zh-CN') {
+        return `${language}${mode.output_type === 'audio' ? '\u8bed\u97f3' : '\u6587\u672c'}`;
+      }
+      return `${language} ${mode.output_type === 'audio' ? 'audio' : 'text'}`;
+    }
+
+    function getTaskFlowMessage(mode, stageOrKey) {
+      const stage = ['idle', 'processing', 'ready'].includes(stageOrKey)
+        ? stageOrKey
+        : /^flow\.(idle|processing|ready)\./.exec(stageOrKey || '')?.[1];
+
+      if (!mode || !stage) {
+        return '';
+      }
+
+      const resultLabel = getTargetResultLabel(mode);
+      if (state.locale === 'zh-CN') {
+        if (stage === 'idle') {
+          return mode.input_type === 'text'
+            ? `\u8f93\u5165\u6587\u672c\u540e\u5373\u53ef\u751f\u6210${resultLabel}\u3002`
+            : `\u51c6\u5907\u8bed\u97f3\u540e\u5373\u53ef\u751f\u6210${resultLabel}\u3002`;
+        }
+        if (stage === 'processing') {
+          return `\u6b63\u5728\u751f\u6210${resultLabel}\uff0c\u8bf7\u7a0d\u5019\u3002`;
+        }
+        if (mode.output_type === 'text') {
+          return mode.input_type === 'audio'
+            ? `\u5df2\u751f\u6210${resultLabel}\uff0c\u53ef\u590d\u5236\u6216\u7ee7\u7eed\u6838\u5bf9\uff1b\u539f\u59cb\u8bed\u97f3\u4fdd\u7559\u5728\u4e0b\u65b9\u4f9b\u56de\u542c\u3002`
+            : `\u5df2\u751f\u6210${resultLabel}\uff0c\u53ef\u590d\u5236\u6216\u7ee7\u7eed\u6838\u5bf9\uff1b\u539f\u59cb\u8f93\u5165\u4fdd\u7559\u5728\u4e0b\u65b9\u4f9b\u56de\u770b\u3002`;
+        }
+        return mode.input_type === 'audio'
+          ? `\u5df2\u751f\u6210${resultLabel}\uff0c\u53ef\u64ad\u653e\u6216\u4e0b\u8f7d\uff1b\u4e2d\u95f4\u6587\u672c\u4e0e\u539f\u59cb\u8bed\u97f3\u4fdd\u7559\u5728\u4e0b\u65b9\u4f9b\u6838\u5bf9\u3002`
+          : `\u5df2\u751f\u6210${resultLabel}\uff0c\u53ef\u64ad\u653e\u6216\u4e0b\u8f7d\uff1b\u539f\u59cb\u8f93\u5165\u4fdd\u7559\u5728\u4e0b\u65b9\u4f9b\u56de\u770b\u3002`;
+      }
+
+      if (stage === 'idle') {
+        return mode.input_type === 'text'
+          ? `Add text when you are ready to generate ${resultLabel}.`
+          : `Prepare the source audio when you are ready to generate ${resultLabel}.`;
+      }
+      if (stage === 'processing') {
+        return `Generating ${resultLabel}. Please wait.`;
+      }
+      if (mode.output_type === 'text') {
+        return mode.input_type === 'audio'
+          ? `The ${resultLabel} is ready to copy or review, with the source audio kept below for replay.`
+          : `The ${resultLabel} is ready to copy or review, with the original input kept below for reference.`;
+      }
+      return mode.input_type === 'audio'
+        ? `The ${resultLabel} is ready to play or download, with intermediate text and source audio kept below for review.`
+        : `The ${resultLabel} is ready to play or download, with the original input kept below for reference.`;
+    }
+
+    function getResultPanelMessage(mode) {
+      if (!mode) {
+        return getMessage('text.non_text_mode_pending');
+      }
+
+      const resultLabel = getTargetResultLabel(mode);
+      if (state.locale === 'zh-CN') {
+        if (mode.output_type === 'text') {
+          return mode.input_type === 'audio'
+            ? `\u8fd9\u91cc\u4f1a\u5148\u663e\u793a${resultLabel}\uff0c\u590d\u5236\u64cd\u4f5c\u7d27\u8ddf\u5176\u540e\uff1b\u539f\u59cb\u8bed\u97f3\u4e0e\u4e2d\u95f4\u6587\u672c\u4fdd\u7559\u5728\u540e\u9762\u4f9b\u6838\u5bf9\u3002`
+            : `\u8fd9\u91cc\u4f1a\u5148\u663e\u793a${resultLabel}\uff0c\u590d\u5236\u64cd\u4f5c\u7d27\u8ddf\u5176\u540e\uff1b\u539f\u59cb\u8f93\u5165\u4fdd\u7559\u5728\u540e\u9762\u4f9b\u56de\u770b\u3002`;
+        }
+        return mode.input_type === 'audio'
+          ? `\u8fd9\u91cc\u4f1a\u5148\u663e\u793a${resultLabel}\uff0c\u64ad\u653e\u4e0e\u4e0b\u8f7d\u64cd\u4f5c\u7d27\u8ddf\u5176\u540e\uff1b\u4e2d\u95f4\u6587\u672c\u4e0e\u539f\u59cb\u8bed\u97f3\u4fdd\u7559\u5728\u540e\u9762\u4f9b\u6838\u5bf9\u3002`
+          : `\u8fd9\u91cc\u4f1a\u5148\u663e\u793a${resultLabel}\uff0c\u64ad\u653e\u4e0e\u4e0b\u8f7d\u64cd\u4f5c\u7d27\u8ddf\u5176\u540e\uff1b\u539f\u59cb\u8f93\u5165\u4fdd\u7559\u5728\u540e\u9762\u4f9b\u56de\u770b\u3002`;
+      }
+
+      if (mode.output_type === 'text') {
+        return mode.input_type === 'audio'
+          ? `${resultLabel} appears first here, with copy actions right after it; the source audio and intermediate text stay after it for review.`
+          : `${resultLabel} appears first here, with copy actions right after it; the original input stays after it for review.`;
+      }
+      return mode.input_type === 'audio'
+        ? `${resultLabel} appears first here, with play and download actions right after it; intermediate text and the source audio stay after it for review.`
+        : `${resultLabel} appears first here, with play and download actions right after it; the original input stays after it for review.`;
     }
 
     function getLanguageLabel(code) {
@@ -1128,6 +1254,9 @@
     }
 
     function setFlowStatus(key, tone = 'info', raw = '') {
+      if (!raw && key.startsWith('flow.')) {
+        raw = getTaskFlowMessage(getActiveMode(), key);
+      }
       state.flowStatus = { key, tone, raw };
       renderFlowStatus();
     }
@@ -1271,29 +1400,32 @@
 
     function describeSpeechSelection() {
       const activeMode = getActiveMode();
-      const taskLabel = getTaskLabel(activeMode);
+      const resultLabel = getTargetResultLabel(activeMode);
       const input = state.speechInput;
+      if (!activeMode) {
+        return getMessage('speech.recording_status_idle');
+      }
       if (state.isRecording) {
         const progress = `${formatSeconds(state.recordSeconds)} / ${formatSeconds(state.constraints?.max_record_seconds || 180)}`;
         if (state.locale === 'zh-CN') {
-          return `正在录音，停止后即可开始${taskLabel}。${progress}`;
+          return `\u6b63\u5728\u5f55\u97f3\uff0c\u505c\u6b62\u540e\u5373\u53ef\u751f\u6210${resultLabel}\u3002${progress}`;
         }
-        return `Recording in progress. Stop when you are ready to start ${taskLabel}. ${progress}`;
+        return `Recording in progress. Stop when you are ready to generate ${resultLabel}. ${progress}`;
       }
       if (input.sourceType === 'recording' && input.recordingId !== null) {
         if (state.locale === 'zh-CN') {
-          return `已准备录音 #${input.recordingId}，开始后将执行${taskLabel}。`;
+          return `\u5df2\u51c6\u5907\u597d\u5f55\u97f3 #${input.recordingId}\uff0c\u5f00\u59cb\u540e\u5c06\u751f\u6210${resultLabel}\u3002`;
         }
-        return `Recording #${input.recordingId} is ready. Start ${taskLabel} when you are ready.`;
+        return `Recording #${input.recordingId} is ready. Start when you are ready to generate ${resultLabel}.`;
       }
       if ((input.sourceType === 'record' || input.sourceType === 'upload') && input.fileName) {
         const duration = input.durationSeconds ? ` (${formatSeconds(input.durationSeconds)})` : '';
         if (state.locale === 'zh-CN') {
-          return `已准备音频 ${input.fileName}${duration}，开始后将执行${taskLabel}。`;
+          return `\u5df2\u51c6\u5907\u597d\u97f3\u9891 ${input.fileName}${duration}\uff0c\u5f00\u59cb\u540e\u5c06\u751f\u6210${resultLabel}\u3002`;
         }
-        return `Audio ${input.fileName}${duration} is ready. Start ${taskLabel} when you are ready.`;
+        return `Audio ${input.fileName}${duration} is ready. Start when you are ready to generate ${resultLabel}.`;
       }
-      return getMessage(getTaskFlowKey(activeMode, 'idle'));
+      return getTaskFlowMessage(activeMode, 'idle');
     }
 
     function setDefaultFlowStatus() {
@@ -1350,7 +1482,11 @@
     function renderTaskHeader() {
       const activeMode = getActiveMode();
       const title = document.getElementById('task-header-title');
+      const direction = document.getElementById('task-header-direction');
       const caption = document.getElementById('task-header-caption');
+
+      direction.hidden = true;
+      direction.textContent = '';
 
       if (state.activeKind === 'recordings') {
         title.textContent = getMessage('nav.recordings');
@@ -1371,7 +1507,14 @@
       }
 
       title.textContent = activeMode ? getTaskLabel(activeMode) : '--';
-      caption.textContent = activeMode ? getDirectionLabel(activeMode) : getMessage('task_header.pick_direction');
+      if (!activeMode) {
+        caption.textContent = getMessage('task_header.pick_direction');
+        return;
+      }
+
+      direction.hidden = false;
+      direction.textContent = getDirectionLabel(activeMode);
+      caption.textContent = getLeafLabel(activeMode.mode_key);
     }
 
     function renderUtilityPanels() {
@@ -1580,10 +1723,10 @@
       if (isText && activeMode) {
         textInput.placeholder = getMessage(activeMode.source_lang === 'zh' ? 'text.placeholder.zh' : 'text.placeholder.en');
         textHint.textContent = getMessage('text.input_hint');
-        outputCaption.textContent = getMessage(getResultCaptionKey(activeMode));
+        outputCaption.textContent = getResultPanelMessage(activeMode);
       } else if (isSpeech) {
         textHint.textContent = '';
-        outputCaption.textContent = getMessage(getResultCaptionKey(activeMode));
+        outputCaption.textContent = getResultPanelMessage(activeMode);
       } else {
         textInput.placeholder = getMessage('text.non_text_mode_pending');
         textHint.textContent = getMessage('text.non_text_mode_pending');
@@ -1945,11 +2088,20 @@
     }
 
     function renderStatus() {
-      const labelKey = state.healthOk ? 'status.ready' : 'status.error';
-      const label = getMessage(labelKey);
-      document.getElementById('task-header-status-label').textContent = label;
-      document.getElementById('footer-status-label').textContent = label;
-      document.getElementById('task-header-status').classList.toggle('is-error', !state.healthOk);
+      const taskStatus = document.getElementById('task-header-status');
+      const taskStatusLabel = document.getElementById('task-header-status-label');
+      const taskLabelKey = state.flowStatus.tone === 'processing'
+        ? 'status.processing'
+        : state.flowStatus.tone === 'error'
+          ? 'status.error'
+          : 'status.ready';
+
+      taskStatusLabel.textContent = getMessage(taskLabelKey);
+      taskStatus.classList.toggle('is-processing', state.flowStatus.tone === 'processing');
+      taskStatus.classList.toggle('is-error', state.flowStatus.tone === 'error');
+
+      const footerLabelKey = state.healthOk ? 'status.ready' : 'status.error';
+      document.getElementById('footer-status-label').textContent = getMessage(footerLabelKey);
       document.getElementById('footer-status').classList.toggle('is-error', !state.healthOk);
     }
 

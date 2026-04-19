@@ -42,8 +42,11 @@ def test_root_route_renders_req1_shell_landmarks(client) -> None:
         'id="app-main"',
         'id="app-shell-grid"',
         'id="app-task-header"',
+        'id="task-header-direction"',
         'id="app-footer"',
         'id="app-input-panel"',
+        'id="input-panel-caption"',
+        'id="mode-picker-label"',
         'id="app-output-panel"',
         'id="app-history-panel"',
     ):
@@ -139,8 +142,9 @@ def test_root_route_exposes_result_first_narrative_helpers(client) -> None:
 
     for marker in (
         "function getTaskFlowKey(",
-        "function getResultCaptionKey(",
         "function getResultEmptyKey(",
+        "function getTaskFlowMessage(",
+        "function getResultPanelMessage(",
         "function buildResultNarrative(",
         "result.replaceChildren(...orderedChildren);",
     ):
