@@ -218,6 +218,21 @@ def test_root_route_exposes_recording_reuse_mode_picker_contract(client) -> None
     assert "formData.append('recording_id', String(state.speechInput.recordingId));" in html
 
 
+def test_root_route_preserves_current_speech_direction_when_reusing_recording(client) -> None:
+    html = client.get("/").get_data(as_text=True)
+    recordings_list_body = _js_block_after(html, "function renderRecordingsList()")
+
+    assert "function isSpeechReuseMode(mode) {" in html
+    assert "function applyRecordingReuse(recording, mode) {" in html
+    assert "const currentMode = getActiveMode();" in recordings_list_body
+    assert "if (isSpeechReuseMode(currentMode)) {" in recordings_list_body
+    assert "applyRecordingReuse(recording, currentMode);" in recordings_list_body
+    assert "state.activeModeKey = '';" in recordings_list_body
+    preserve_index = recordings_list_body.index("applyRecordingReuse(recording, currentMode);")
+    fallback_index = recordings_list_body.index("state.activeModeKey = '';")
+    assert preserve_index < fallback_index
+
+
 def test_root_route_exposes_result_first_narrative_helpers(client) -> None:
     resp = client.get("/")
     html = resp.get_data(as_text=True)

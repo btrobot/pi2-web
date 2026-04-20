@@ -621,6 +621,26 @@ def test_index_result_narrative_contract_keeps_final_result_first_and_actions_ad
     assert "result.replaceChildren(...orderedChildren);" not in render_body
 
 
+def test_index_recording_reuse_contract_preserves_current_speech_direction_when_available(client):
+    script = _get_index_script(_get_index_html(client))
+
+    helper_start = script.index("function applyRecordingReuse(recording, mode) {")
+    helper_end = script.index("\n\n    function resetResultForModeChange", helper_start)
+    helper_body = script[helper_start:helper_end]
+    assert "clearPendingReuseRecording();" in helper_body
+    assert "state.activeModeKey = mode.mode_key;" in helper_body
+    assert "setSpeechInputSource({" in helper_body
+    assert "setFlowStatus('speech.recording_selected', 'ready'" in helper_body
+
+    recordings_start = script.index("function renderRecordingsList() {")
+    recordings_end = script.index("\n\n    function renderInputPanel()", recordings_start)
+    recordings_body = script[recordings_start:recordings_end]
+    assert "const currentMode = getActiveMode();" in recordings_body
+    assert "if (isSpeechReuseMode(currentMode)) {" in recordings_body
+    assert "applyRecordingReuse(recording, currentMode);" in recordings_body
+    assert "state.pendingReuseRecording = {" in recordings_body
+
+
 def test_index_flow_copy_contract_uses_task_language_helpers(client):
     script = _get_index_script(_get_index_html(client))
 

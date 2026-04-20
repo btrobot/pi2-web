@@ -1269,6 +1269,10 @@
         .filter(Boolean);
     }
 
+    function isSpeechReuseMode(mode) {
+      return Boolean(mode) && SPEECH_REUSE_MODE_KEYS.includes(mode.mode_key);
+    }
+
     function getActiveMode() {
       if (state.activeKind !== 'group' || state.pendingReuseRecording) {
         return null;
@@ -1333,6 +1337,25 @@
 
     function clearPendingReuseRecording() {
       state.pendingReuseRecording = null;
+    }
+
+    function applyRecordingReuse(recording, mode) {
+      if (mode) {
+        state.activeKind = 'group';
+        state.activeGroupKey = mode.group_key;
+        state.activeModeKey = mode.mode_key;
+      }
+      clearPendingReuseRecording();
+      setSpeechInputSource({
+        sourceType: 'recording',
+        audioUrl: recording.audio_url,
+        recordingId: recording.id,
+        durationSeconds: recording.duration_seconds || 0,
+        fileName: `recording-${recording.id}.wav`,
+      });
+      resetResultForModeChange();
+      setFlowStatus('speech.recording_selected', 'ready', `${getMessage('speech.recording_selected')} #${recording.id}`);
+      renderShell();
     }
 
     function resetResultForModeChange() {
@@ -1753,6 +1776,11 @@
         const button = card.querySelector('.recording-action');
         button.classList.toggle('is-active', state.speechInput.sourceType === 'recording' && state.speechInput.recordingId === recording.id);
         button.onclick = () => {
+          const currentMode = getActiveMode();
+          if (isSpeechReuseMode(currentMode)) {
+            applyRecordingReuse(recording, currentMode);
+            return;
+          }
           state.activeKind = 'group';
           state.activeGroupKey = 'same_speech_to_text';
           state.activeModeKey = '';
