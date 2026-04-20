@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _STOP_TIMEOUT_SECONDS = 2
 _RECORD_JOIN_TIMEOUT_SECONDS = 5
 _PLAYBACK_SETTLE_SECONDS = 0.35
+_RECORD_START_RESPONSE_GRACE_SECONDS = 0.05
 
 
 class MediaCoordinatorError(Exception):
@@ -154,7 +155,7 @@ class Pi5MediaCoordinator:
             self._recording_token += 1
             token = self._recording_token
             self._recording_thread = threading.Thread(
-                target=self._record_audio_worker,
+                target=self._record_audio_worker_bootstrap,
                 args=(temp_path, stop_event, token),
                 daemon=True,
                 name=f"pi5-recording-{token}",
@@ -169,9 +170,24 @@ class Pi5MediaCoordinator:
             self._recording_result_path = None
             self._recording_error = None
             thread = self._recording_thread
+            start_state = self._snapshot_locked()
 
-        thread.start()
-        return self.get_state()
+        try:
+            thread.start()
+        except RuntimeError as exc:
+            with self._lock:
+                self._reset_recording_locked(clear_error=True)
+            if os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+            raise MediaCoordinatorError(f"Pi5 recording failed to start: {exc}") from exc
+        return start_state
+
+    def _record_audio_worker_bootstrap(self, output_path: str, stop_event: threading.Event, token: int) -> None:
+        time.sleep(_RECORD_START_RESPONSE_GRACE_SECONDS)
+        self._record_audio_worker(output_path, stop_event, token)
 
     def stop_recording(self) -> dict[str, Any]:
         with self._lock:
@@ -280,6 +296,12 @@ class Pi5MediaCoordinator:
 
     def _snapshot_locked(self) -> dict[str, Any]:
         recording_thread_alive = self._recording_thread is not None and self._recording_thread.is_alive()
+        recording_starting = (
+            self._recording_thread is not None
+            and self._recording_info is not None
+            and self._recording_result_path is None
+            and self._recording_error is None
+        )
         playback_settling = self._is_playback_settling_locked()
         recording_info = None
         if self._recording_info is not None:
@@ -290,7 +312,7 @@ class Pi5MediaCoordinator:
             }
             recording_info["pending_save"] = self._recording_result_path is not None
 
-        if recording_thread_alive:
+        if recording_thread_alive or recording_starting:
             status = "recording"
             active_kind = "recording"
         elif self._playback_proc is not None:

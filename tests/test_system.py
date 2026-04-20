@@ -119,6 +119,13 @@ def test_root_route_exposes_speech_mode_controls(client) -> None:
     assert "/api/pi5/recordings/state" in html
     assert "/api/pi5/media/state" in html
     assert "/api/pi5/media/stop" in html
+    assert "const PI5_RECORD_START_TIMEOUT_MS = 4000;" in html
+    assert "const PI5_STATE_TIMEOUT_MS = 1500;" in html
+    assert "async function fetchJson(path, options = {}, { timeoutMs = 0 } = {})" in html
+    assert "await loadPi5RecordingState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in html
+    assert "if (recoveredState?.active_kind === 'recording') {" in html
+    assert "return state.pi5Media;" in html
+    assert "applyPi5MediaState(null);" not in html
     assert "loadPi5MediaState({ silent: true });" in html
     assert "function isPi5MediaBusy()" in html
     assert "await Promise.all([loadHistoryData(), loadPi5MediaState()]);" in html
@@ -185,6 +192,9 @@ def test_root_route_exposes_history_ui_controls(client) -> None:
     assert "/api/history/recent" in html
     assert "/api/history/export" in html
     assert "method: 'DELETE'" in html
+    assert "function createActionLink(label, href, { download = false, newTab = true } = {})" in html
+    assert "createActionLink(getMessage('text.download_audio'), url, { download: true, newTab: false })" in html
+    assert "const isAudioArtifact = labelKey === 'history.input_audio' || labelKey === 'history.output_audio';" in html
 
 
 def test_root_route_exposes_help_settings_and_locale_polish_controls(client) -> None:

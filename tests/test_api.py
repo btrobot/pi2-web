@@ -199,6 +199,46 @@ def test_real_pi5_media_coordinator_persists_recording_on_stop(mock_config, tmp_
     }
 
 
+def test_real_pi5_media_coordinator_reports_recording_before_worker_runs(mock_config):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+
+    with patch("threading.Thread.start", autospec=True, return_value=None):
+        start_state = coordinator.start_recording()
+        snapshot = coordinator.get_state()
+
+    assert start_state == {
+        "status": "recording",
+        "device": "plughw:2,0",
+        "active_kind": "recording",
+        "playback": None,
+        "recording": {
+            "started_at": start_state["recording"]["started_at"],
+            "device": "plughw:2,0",
+            "max_duration_seconds": 180,
+            "pending_save": False,
+        },
+        "error": None,
+    }
+    assert snapshot == start_state
+
+
+def test_real_pi5_media_coordinator_rolls_back_when_thread_start_fails(mock_config):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+
+    with patch("threading.Thread.start", autospec=True, side_effect=RuntimeError("thread boom")):
+        with pytest.raises(MediaCoordinatorError, match="Pi5 recording failed to start: thread boom"):
+            coordinator.start_recording()
+
+    assert coordinator.get_state() == {
+        "status": "idle",
+        "device": "plughw:2,0",
+        "active_kind": None,
+        "playback": None,
+        "recording": None,
+        "error": None,
+    }
+
+
 def test_real_pi5_media_coordinator_blocks_immediate_restart_after_stop(mock_config, tmp_audio_file):
     coordinator = Pi5MediaCoordinator(config=mock_config)
     playback_proc = _FakePlaybackProcess()

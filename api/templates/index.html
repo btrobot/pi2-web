@@ -1021,9 +1021,43 @@
         deletingId: null,
       },
     };
+    const PI5_RECORD_START_TIMEOUT_MS = 4000;
+    const PI5_STATE_TIMEOUT_MS = 1500;
 
     function getMessage(key) {
       return state.i18n?.[state.locale]?.[key] ?? '';
+    }
+
+    function getTimeoutMessage(label) {
+      if (state.locale === 'zh-CN') {
+        return `${label}超时，请检查 Pi5 设备状态后重试。`;
+      }
+      return `${label} timed out. Check the Pi5 device state and try again.`;
+    }
+
+    async function fetchJson(path, options = {}, { timeoutMs = 0 } = {}) {
+      const controller = timeoutMs > 0 ? new AbortController() : null;
+      const timerId = controller
+        ? window.setTimeout(() => controller.abort(new DOMException('timeout', 'AbortError')), timeoutMs)
+        : null;
+
+      try {
+        const response = await fetch(path, {
+          ...options,
+          signal: controller?.signal,
+        });
+        const payload = await response.json();
+        return { response, payload };
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          throw new Error(getTimeoutMessage(path));
+        }
+        throw error;
+      } finally {
+        if (timerId !== null) {
+          window.clearTimeout(timerId);
+        }
+      }
     }
 
     function getLeafLabel(modeKey) {
@@ -1326,12 +1360,17 @@
       return button;
     }
 
-    function createActionLink(label, href) {
+    function createActionLink(label, href, { download = false, newTab = true } = {}) {
       const link = document.createElement('a');
       link.className = 'link-button';
       link.href = href;
-      link.target = '_blank';
-      link.rel = 'noreferrer';
+      if (newTab) {
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+      }
+      if (download) {
+        link.setAttribute('download', '');
+      }
       link.textContent = label;
       return link;
     }
@@ -1357,8 +1396,7 @@
       note.textContent = getMessage(
         labelKey === 'history.output_audio' ? 'speech.pi5_output_playback_hint' : 'speech.pi5_input_archive_hint',
       );
-      const link = createActionLink(getMessage('text.download_audio'), url);
-      link.setAttribute('download', '');
+      const link = createActionLink(getMessage('text.download_audio'), url, { download: true, newTab: false });
       block.append(label, note, link);
       return block;
     }
@@ -2076,7 +2114,12 @@
       ];
       artifactActions.forEach(([labelKey, href]) => {
         if (href) {
-          actions.appendChild(createActionLink(getMessage(labelKey), href));
+          const isAudioArtifact = labelKey === 'history.input_audio' || labelKey === 'history.output_audio';
+          actions.appendChild(createActionLink(
+            getMessage(labelKey),
+            href,
+            isAudioArtifact ? { download: true, newTab: false } : undefined,
+          ));
         }
       });
       const deleteButton = createActionButton(getMessage('history.delete'), () => handleDeleteHistory(item.id));
@@ -2201,11 +2244,10 @@
       setFlowStatus('speech.pi5_recording_starting', 'processing');
       renderShell();
       try {
-        const response = await fetch('/api/pi5/recordings/start', {
+        const { response, payload } = await fetchJson('/api/pi5/recordings/start', {
           method: 'POST',
           headers: { Accept: 'application/json' },
-        });
-        const payload = await response.json();
+        }, { timeoutMs: PI5_RECORD_START_TIMEOUT_MS });
         if (!response.ok) {
           if (payload.pi5_recording) {
             applyPi5MediaState(payload.pi5_recording);
@@ -2218,8 +2260,13 @@
         applyPi5MediaState(payload.pi5_recording);
         setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
       } catch (error) {
-        setFlowStatus('', 'error', error.message || getMessage('speech.recording_permission_denied'));
-        await loadPi5RecordingState();
+        const fallbackMessage = error.message || getMessage('speech.recording_permission_denied');
+        const recoveredState = await loadPi5RecordingState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
+        if (recoveredState?.active_kind === 'recording') {
+          setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
+        } else {
+          setFlowStatus('', 'error', fallbackMessage);
+        }
       } finally {
         state.isSubmitting = false;
         renderShell();
@@ -2298,30 +2345,31 @@
       }
     }
 
-    async function loadPi5State(path, payloadKey, { silent = false } = {}) {
+    async function loadPi5State(path, payloadKey, { silent = false, timeoutMs = 0 } = {}) {
       try {
-        const response = await fetch(path, { headers: { Accept: 'application/json' } });
-        const payload = await response.json();
+        const { response, payload } = await fetchJson(path, { headers: { Accept: 'application/json' } }, { timeoutMs });
         if (!response.ok) {
           throw new Error(payload.error || `HTTP ${response.status}`);
         }
         applyPi5MediaState(payload[payloadKey]);
       } catch (_error) {
-        applyPi5MediaState(null);
+        // Preserve the last known Pi5 state on transient fetch failures so the UI
+        // does not incorrectly unlock while device-side media may still be active.
       }
       if (silent) {
         renderPi5MediaSurfaces();
-        return;
+        return state.pi5Media;
       }
       renderShell();
+      return state.pi5Media;
     }
 
-    async function loadPi5RecordingState({ silent = false } = {}) {
-      await loadPi5State('/api/pi5/recordings/state', 'pi5_recording', { silent });
+    async function loadPi5RecordingState({ silent = false, timeoutMs = 0 } = {}) {
+      return loadPi5State('/api/pi5/recordings/state', 'pi5_recording', { silent, timeoutMs });
     }
 
-    async function loadPi5MediaState({ silent = false } = {}) {
-      await loadPi5State('/api/pi5/media/state', 'pi5_media', { silent });
+    async function loadPi5MediaState({ silent = false, timeoutMs = 0 } = {}) {
+      return loadPi5State('/api/pi5/media/state', 'pi5_media', { silent, timeoutMs });
     }
 
     async function loadRecordings() {
