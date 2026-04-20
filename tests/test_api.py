@@ -641,6 +641,30 @@ def test_index_recording_reuse_contract_preserves_current_speech_direction_when_
     assert "state.pendingReuseRecording = {" in recordings_body
 
 
+@pytest.mark.parametrize(
+    ("mode_key", "group_key"),
+    [
+        ("asr_mt_zh_en", "cross_speech_to_text"),
+        ("asr_mt_en_zh", "cross_speech_to_text"),
+        ("asr_mt_tts_zh_en", "cross_speech_to_speech"),
+        ("asr_mt_tts_en_zh", "cross_speech_to_speech"),
+    ],
+)
+def test_index_recording_reuse_contract_covers_cross_speech_modes(client, mode_key, group_key):
+    script = _get_index_script(_get_index_html(client))
+
+    assert f"'{mode_key}'" in script
+
+    helper_start = script.index("function applyRecordingReuse(recording, mode) {")
+    helper_end = script.index("\n\n    function resetResultForModeChange", helper_start)
+    helper_body = script[helper_start:helper_end]
+    assert "state.activeGroupKey = mode.group_key;" in helper_body
+    assert "state.activeModeKey = mode.mode_key;" in helper_body
+
+    mode_lookup = f"state.activeGroupKey = '{group_key}';"
+    assert mode_lookup not in helper_body
+
+
 def test_index_flow_copy_contract_uses_task_language_helpers(client):
     script = _get_index_script(_get_index_html(client))
 
