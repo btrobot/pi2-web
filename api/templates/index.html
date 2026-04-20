@@ -985,6 +985,11 @@
       'asr_mt_tts_en_zh',
     ];
 
+    const PI5_STATE_RESOURCES = {
+      media: { path: '/api/pi5/media/state', payloadKey: 'pi5_media' },
+      recording: { path: '/api/pi5/recordings/state', payloadKey: 'pi5_recording' },
+    };
+
     const state = {
       locale: 'zh-CN',
       i18n: {},
@@ -1011,7 +1016,6 @@
         durationSeconds: 0,
       },
       pendingReuseRecording: null,
-      isRecording: false,
       history: {
         recent: [],
         recentState: 'idle',
@@ -1415,10 +1419,10 @@
     }
 
     function syncPi5MediaPolling() {
-      const shouldPoll = Boolean(state.pi5Media && ['playing', 'recording', 'busy'].includes(state.pi5Media.status));
+      const shouldPoll = isPi5MediaProcessing();
       if (shouldPoll && state.pi5MediaPollId === null) {
         state.pi5MediaPollId = window.setInterval(() => {
-          loadPi5MediaState({ silent: true });
+          syncPi5State('media', { silent: true });
         }, 2000);
         return;
       }
@@ -1429,12 +1433,25 @@
 
     function applyPi5MediaState(nextState) {
       state.pi5Media = nextState || null;
-      state.isRecording = Boolean(nextState && nextState.active_kind === 'recording');
       syncPi5MediaPolling();
     }
 
-    function isPi5MediaBusy() {
-      return Boolean(state.pi5Media && ['playing', 'recording', 'busy'].includes(state.pi5Media.status));
+    function getPi5MediaStatus(mediaState = state.pi5Media) {
+      return mediaState?.status || 'idle';
+    }
+
+    function isPi5RecordingActive(mediaState = state.pi5Media) {
+      return Boolean(mediaState)
+        && (mediaState.active_kind === 'recording' || getPi5MediaStatus(mediaState) === 'recording');
+    }
+
+    function isPi5PlaybackActive(mediaState = state.pi5Media) {
+      return Boolean(mediaState)
+        && (mediaState.active_kind === 'playback' || getPi5MediaStatus(mediaState) === 'playing');
+    }
+
+    function isPi5MediaProcessing(mediaState = state.pi5Media) {
+      return Boolean(mediaState) && ['playing', 'recording', 'busy'].includes(getPi5MediaStatus(mediaState));
     }
 
     function renderViewVisibility() {
@@ -1466,7 +1483,7 @@
       if (!activeMode) {
         return getMessage('speech.recording_status_idle');
       }
-      if (state.isRecording) {
+      if (isPi5RecordingActive()) {
         if (state.locale === 'zh-CN') {
           return `Pi5 正在录音，请在 Pi5 麦克风旁说话；停止后即可生成${resultLabel}。`;
         }
@@ -1485,23 +1502,22 @@
       return getTaskFlowMessage(activeMode, 'idle');
     }
 
-    function describePi5MediaStatus() {
-      const media = state.pi5Media;
-      if (!media || media.status === 'idle') {
+    function getPi5MediaStatusMessage(mediaState = state.pi5Media) {
+      if (!mediaState || getPi5MediaStatus(mediaState) === 'idle') {
         return getMessage('speech.pi5_media_idle');
       }
-      if (media.status === 'error') {
-        const suffix = media.error ? ` ${media.error}` : '';
+      if (getPi5MediaStatus(mediaState) === 'error') {
+        const suffix = mediaState.error ? ` ${mediaState.error}` : '';
         return `${getMessage('speech.pi5_media_error_prefix')}${suffix}`.trim();
       }
-      if (media.status === 'busy') {
+      if (getPi5MediaStatus(mediaState) === 'busy') {
         return getMessage('speech.pi5_media_busy');
       }
-      if (media.active_kind === 'recording' || media.status === 'recording') {
+      if (isPi5RecordingActive(mediaState)) {
         return getMessage('speech.pi5_media_recording');
       }
-      if (media.active_kind === 'playback' || media.status === 'playing') {
-        const modeLabel = media.playback?.mode_key ? getLeafLabel(media.playback.mode_key) : '';
+      if (isPi5PlaybackActive(mediaState)) {
+        const modeLabel = mediaState.playback?.mode_key ? getLeafLabel(mediaState.playback.mode_key) : '';
         return modeLabel
           ? `${getMessage('speech.pi5_media_playing')} (${modeLabel})`
           : getMessage('speech.pi5_media_playing');
@@ -1785,29 +1801,30 @@
       textUploadLabel.classList.toggle('is-disabled', !isText);
       textClearButton.disabled = !isText;
 
-      speechRecordButton.disabled = !isSpeech || state.isRecording || state.isSubmitting;
-      speechStopButton.disabled = !isSpeech || !state.isRecording || state.isSubmitting;
-      speechClearButton.disabled = !isSpeech || state.isRecording || state.isSubmitting;
+      const pi5RecordingActive = isPi5RecordingActive();
+      speechRecordButton.disabled = !isSpeech || pi5RecordingActive || state.isSubmitting;
+      speechStopButton.disabled = !isSpeech || !pi5RecordingActive || state.isSubmitting;
+      speechClearButton.disabled = !isSpeech || pi5RecordingActive || state.isSubmitting;
 
       speechHint.textContent = getMessage('speech.input_hint');
       speechSourceStatus.textContent = describeSpeechSelection();
       speechSourceStatus.className = 'status-note';
-      if (state.isRecording) {
+      if (pi5RecordingActive) {
         speechSourceStatus.classList.add('is-processing');
       } else if (state.speechInput.sourceType) {
         speechSourceStatus.classList.add('is-ready');
       }
 
-      pi5MediaStatus.textContent = describePi5MediaStatus();
+      pi5MediaStatus.textContent = getPi5MediaStatusMessage();
       pi5MediaStatus.className = 'status-note';
-      if (state.pi5Media?.status === 'error') {
+      if (getPi5MediaStatus() === 'error') {
         pi5MediaStatus.classList.add('is-error');
-      } else if (state.pi5Media && ['playing', 'recording', 'busy'].includes(state.pi5Media.status)) {
+      } else if (isPi5MediaProcessing()) {
         pi5MediaStatus.classList.add('is-processing');
       } else {
         pi5MediaStatus.classList.add('is-ready');
       }
-      pi5StopPlaybackButton.disabled = state.isSubmitting || state.pi5Media?.active_kind !== 'playback';
+      pi5StopPlaybackButton.disabled = state.isSubmitting || !isPi5PlaybackActive();
 
       if (isText && activeMode) {
         textInput.placeholder = getMessage(activeMode.source_lang === 'zh' ? 'text.placeholder.zh' : 'text.placeholder.en');
@@ -1844,27 +1861,27 @@
       const startButton = document.getElementById('text-start-button');
       const resetButton = document.getElementById('text-reset-button');
       const saveButton = document.getElementById('text-save-button');
-      const canStartSpeech = Boolean(state.speechInput.sourceType) && !state.isRecording;
+      const pi5RecordingActive = isPi5RecordingActive();
+      const canStartSpeech = Boolean(state.speechInput.sourceType) && !pi5RecordingActive;
       const hasAnyState = Boolean(state.textInput || state.speechInput.sourceType || state.lastResult);
-      const pi5Busy = isPi5MediaBusy();
+      const pi5MediaProcessing = isPi5MediaProcessing();
       const textAudioMode = isTextAudioMode(activeMode);
-      const pi5RecordingBusy = state.pi5Media?.active_kind === 'recording';
 
       startButton.textContent = getMessage('text.start');
       resetButton.textContent = getMessage('text.reset');
       saveButton.textContent = isSpeechMode(activeMode) ? getMessage('speech.save_recording') : getMessage('text.save_input');
 
       if (isTextMode(activeMode)) {
-        startButton.disabled = state.isSubmitting || (textAudioMode && pi5RecordingBusy);
+        startButton.disabled = state.isSubmitting || (textAudioMode && pi5RecordingActive);
         resetButton.disabled = state.isSubmitting && !hasAnyState;
         saveButton.disabled = false;
         return;
       }
 
       if (isSpeechMode(activeMode)) {
-        startButton.disabled = state.isSubmitting || !canStartSpeech || pi5Busy;
-        resetButton.disabled = state.isSubmitting || state.isRecording;
-        saveButton.disabled = state.isSubmitting || state.isRecording || state.speechInput.recordingId === null;
+        startButton.disabled = state.isSubmitting || !canStartSpeech || pi5MediaProcessing;
+        resetButton.disabled = state.isSubmitting || pi5RecordingActive;
+        saveButton.disabled = state.isSubmitting || pi5RecordingActive || state.speechInput.recordingId === null;
         return;
       }
 
@@ -2244,7 +2261,7 @@
 
     async function handleRecordStart() {
       const activeMode = getActiveMode();
-      if (state.isRecording || !isSpeechMode(activeMode)) {
+      if (isPi5RecordingActive() || !isSpeechMode(activeMode)) {
         return;
       }
 
@@ -2269,8 +2286,8 @@
         setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
       } catch (error) {
         const fallbackMessage = error.message || getMessage('speech.recording_permission_denied');
-        const recoveredState = await loadPi5RecordingState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
-        if (recoveredState?.active_kind === 'recording') {
+        const recoveredState = await syncPi5State('recording', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
+        if (isPi5RecordingActive(recoveredState)) {
           setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
         } else {
           setFlowStatus('', 'error', fallbackMessage);
@@ -2282,7 +2299,7 @@
     }
 
     async function handleRecordStop() {
-      if (!state.isRecording) {
+      if (!isPi5RecordingActive()) {
         return;
       }
 
@@ -2316,7 +2333,7 @@
         setFlowStatus('speech.pi5_recording_saved', 'ready', `${getMessage('speech.pi5_recording_saved')} #${recording.id}`);
       } catch (error) {
         setFlowStatus('', 'error', error.message || getMessage('speech.pi5_recording_failed'));
-        await loadPi5RecordingState();
+        await syncPi5State('recording');
       } finally {
         state.isSubmitting = false;
         renderShell();
@@ -2347,31 +2364,53 @@
       return state.pi5Media;
     }
 
+    function isPi5PlaybackRestartReady(mediaState) {
+      return Boolean(mediaState)
+        && getPi5MediaStatus(mediaState) === 'idle'
+        && !isPi5PlaybackActive(mediaState)
+        && !isPi5RecordingActive(mediaState);
+    }
+
+    function getPi5PlaybackRestartErrorMessage(restartState) {
+      if (restartState.timedOut) {
+        return getTimeoutMessage(getMessage('speech.pi5_stop_playback'));
+      }
+      if (getPi5MediaStatus(restartState.mediaState) === 'error') {
+        return getPi5MediaStatusMessage(restartState.mediaState);
+      }
+      return getMessage('speech.pi5_media_busy');
+    }
+
     async function waitForPi5PlaybackRestartWindow() {
       const deadline = Date.now() + PI5_PLAYBACK_RESTART_TIMEOUT_MS;
       while (Date.now() <= deadline) {
-        const mediaState = await loadPi5MediaState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
-        if (!mediaState || mediaState.active_kind === 'recording' || !['playing', 'busy'].includes(mediaState.status)) {
-          return mediaState;
+        const mediaState = await syncPi5State('media', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
+        if (isPi5PlaybackRestartReady(mediaState)) {
+          return { ready: true, timedOut: false, mediaState };
+        }
+        if (isPi5RecordingActive(mediaState)) {
+          return { ready: false, timedOut: false, mediaState };
         }
         await waitForDuration(150);
       }
-      return state.pi5Media;
+      return { ready: false, timedOut: true, mediaState: state.pi5Media };
     }
 
-    async function preparePi5TextPlaybackRestart() {
-      if (state.pi5Media?.active_kind === 'recording') {
-        return false;
+    async function ensurePi5TextAudioStartReady() {
+      if (isPi5RecordingActive()) {
+        return { ready: false, timedOut: false, mediaState: state.pi5Media };
       }
-      if (state.pi5Media?.active_kind === 'playback') {
+      if (isPi5PlaybackActive()) {
         await requestPi5PlaybackStop();
       }
-      const mediaState = await waitForPi5PlaybackRestartWindow();
-      return !Boolean(mediaState && ['playing', 'recording', 'busy'].includes(mediaState.status));
+      if (isPi5PlaybackRestartReady(state.pi5Media)) {
+        return { ready: true, timedOut: false, mediaState: state.pi5Media };
+      }
+      return waitForPi5PlaybackRestartWindow();
     }
 
     async function handleStopPlayback() {
-      if (state.pi5Media?.active_kind !== 'playback') {
+      if (!isPi5PlaybackActive()) {
         return;
       }
 
@@ -2382,20 +2421,24 @@
         setFlowStatus('speech.pi5_playback_stopped', 'ready');
       } catch (error) {
         setFlowStatus('', 'error', error.message || getMessage('speech.pi5_playback_stop_failed'));
-        await loadPi5MediaState({ silent: true });
+        await syncPi5State('media', { silent: true });
       } finally {
         state.isSubmitting = false;
         renderShell();
       }
     }
 
-    async function loadPi5State(path, payloadKey, { silent = false, timeoutMs = 0 } = {}) {
+    async function syncPi5State(resourceKey, { silent = false, timeoutMs = 0 } = {}) {
+      const resource = PI5_STATE_RESOURCES[resourceKey];
+      if (!resource) {
+        throw new Error(`unknown Pi5 state resource: ${resourceKey}`);
+      }
       try {
-        const { response, payload } = await fetchJson(path, { headers: { Accept: 'application/json' } }, { timeoutMs });
+        const { response, payload } = await fetchJson(resource.path, { headers: { Accept: 'application/json' } }, { timeoutMs });
         if (!response.ok) {
           throw new Error(payload.error || `HTTP ${response.status}`);
         }
-        applyPi5MediaState(payload[payloadKey]);
+        applyPi5MediaState(payload[resource.payloadKey]);
       } catch (_error) {
         // Preserve the last known Pi5 state on transient fetch failures so the UI
         // does not incorrectly unlock while device-side media may still be active.
@@ -2406,14 +2449,6 @@
       }
       renderShell();
       return state.pi5Media;
-    }
-
-    async function loadPi5RecordingState({ silent = false, timeoutMs = 0 } = {}) {
-      return loadPi5State('/api/pi5/recordings/state', 'pi5_recording', { silent, timeoutMs });
-    }
-
-    async function loadPi5MediaState({ silent = false, timeoutMs = 0 } = {}) {
-      return loadPi5State('/api/pi5/media/state', 'pi5_media', { silent, timeoutMs });
     }
 
     async function loadRecordings() {
@@ -2599,7 +2634,7 @@
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
       state.lastResult = { modeKey: activeMode.mode_key, payload };
-      await Promise.all([loadHistoryData(), loadPi5MediaState()]);
+      await Promise.all([loadHistoryData(), syncPi5State('media')]);
       setFlowStatus(getTaskFlowKey(activeMode, 'ready'), 'ready');
     }
 
@@ -2628,7 +2663,7 @@
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
       state.lastResult = { modeKey: activeMode.mode_key, payload };
-      await Promise.all([loadHistoryData(), loadPi5MediaState()]);
+      await Promise.all([loadHistoryData(), syncPi5State('media')]);
       setFlowStatus(getTaskFlowKey(activeMode, 'ready'), 'ready');
     }
 
@@ -2647,15 +2682,15 @@
 
       try {
         if (isTextAudioMode(activeMode)) {
-          await loadPi5MediaState({ silent: true });
-          const readyForTextRestart = await preparePi5TextPlaybackRestart();
-          if (!readyForTextRestart) {
-            setFlowStatus('speech.pi5_media_busy', 'error');
+          await syncPi5State('media', { silent: true });
+          const restartState = await ensurePi5TextAudioStartReady();
+          if (!restartState.ready) {
+            setFlowStatus('', 'error', getPi5PlaybackRestartErrorMessage(restartState));
             return;
           }
         } else if (isSpeechMode(activeMode)) {
-          await loadPi5MediaState({ silent: true });
-          if (isPi5MediaBusy()) {
+          await syncPi5State('media', { silent: true });
+          if (isPi5MediaProcessing()) {
             setFlowStatus('speech.pi5_media_busy', 'error');
             return;
           }
@@ -2745,7 +2780,7 @@
     });
 
     loadBootstrap()
-      .then(() => Promise.all([loadHealth(), loadRecordings(), loadHistoryData(), loadPi5RecordingState(), loadPi5MediaState()]))
+      .then(() => Promise.all([loadHealth(), loadRecordings(), loadHistoryData(), syncPi5State('media')]))
       .catch((error) => {
         state.healthOk = false;
         setFlowStatus('', 'error', error.message || 'bootstrap failed');

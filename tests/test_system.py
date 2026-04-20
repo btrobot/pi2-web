@@ -24,6 +24,23 @@ def client(app):
     return app.test_client()
 
 
+def _js_block_after(html: str, signature: str) -> str:
+    start = html.index(signature)
+    brace_start = html.index("{", start)
+    depth = 0
+
+    for index in range(brace_start, len(html)):
+        char = html[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return html[brace_start + 1:index]
+
+    raise AssertionError(f"unable to find closing brace for {signature!r}")
+
+
 def test_root_route_is_reachable(client) -> None:
     resp = client.get("/")
 
@@ -92,8 +109,8 @@ def test_root_route_exposes_text_mode_controls(client) -> None:
     assert '/api/conversions/text' in html
     assert "/api/translate" not in html
     assert "function isTextAudioMode(mode) {" in html
-    assert "startButton.disabled = state.isSubmitting || (textAudioMode && pi5RecordingBusy);" in html
-    assert "const readyForTextRestart = await preparePi5TextPlaybackRestart();" in html
+    assert "startButton.disabled = state.isSubmitting || (textAudioMode && pi5RecordingActive);" in html
+    assert "const restartState = await ensurePi5TextAudioStartReady();" in html
     assert "if (isTextAudioMode(activeMode)) {" in html
 
 
@@ -123,28 +140,85 @@ def test_root_route_exposes_speech_mode_controls(client) -> None:
     assert "/api/pi5/recordings/state" in html
     assert "/api/pi5/media/state" in html
     assert "/api/pi5/media/stop" in html
-    assert "const PI5_RECORD_START_TIMEOUT_MS = 4000;" in html
-    assert "const PI5_STATE_TIMEOUT_MS = 1500;" in html
-    assert "const PI5_PLAYBACK_STOP_TIMEOUT_MS = 4500;" in html
-    assert "const PI5_PLAYBACK_RESTART_TIMEOUT_MS = 5000;" in html
+    assert "const PI5_STATE_RESOURCES = {" in html
     assert "async function fetchJson(path, options = {}, { timeoutMs = 0 } = {})" in html
     assert "async function requestPi5PlaybackStop()" in html
     assert "async function waitForPi5PlaybackRestartWindow()" in html
-    assert "async function preparePi5TextPlaybackRestart()" in html
+    assert "async function syncPi5State(resourceKey, { silent = false, timeoutMs = 0 } = {})" in html
+    assert "function isPi5RecordingActive(mediaState = state.pi5Media) {" in html
+    assert "function isPi5MediaProcessing(mediaState = state.pi5Media) {" in html
     assert "if (state.isSubmitting) {" in html
-    assert "await loadPi5RecordingState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in html
-    assert "if (recoveredState?.active_kind === 'recording') {" in html
+    assert "const recoveredState = await syncPi5State('recording', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in html
+    assert "if (isPi5RecordingActive(recoveredState)) {" in html
     assert "return state.pi5Media;" in html
     assert "applyPi5MediaState(null);" not in html
-    assert "loadPi5MediaState({ silent: true });" in html
-    assert "function isPi5MediaBusy()" in html
-    assert "await Promise.all([loadHistoryData(), loadPi5MediaState()]);" in html
-    assert "if (isPi5MediaBusy()) {" in html
+    assert "await syncPi5State('media', { silent: true });" in html
+    assert "await Promise.all([loadHistoryData(), syncPi5State('media')]);" in html
+    assert "if (isPi5MediaProcessing()) {" in html
     assert "navigator.mediaDevices?.getUserMedia" not in html
     assert 'id="speech-upload-input"' not in html
     assert 'id="speech-preview-player"' not in html
     assert 'id="result-source-audio-player"' not in html
     assert 'id="result-audio-player"' not in html
+
+
+def test_root_route_keeps_view_switching_side_effect_free(client) -> None:
+    html = client.get("/").get_data(as_text=True)
+    change_active_view_body = _js_block_after(html, "function changeActiveView(kind, groupKey = state.activeGroupKey)")
+    open_history_view_body = _js_block_after(html, "function openHistoryView(recordId = null)")
+
+    assert "clearPendingReuseRecording();" in change_active_view_body
+    assert "renderShell();" in change_active_view_body
+    for forbidden in (
+        "/api/pi5/",
+        "fetchJson(",
+        "syncPi5State(",
+        "requestPi5PlaybackStop(",
+        "handleRecordStart(",
+        "handleRecordStop(",
+    ):
+        assert forbidden not in change_active_view_body
+        assert forbidden not in open_history_view_body
+
+    assert "state.history.focusId = recordId;" in open_history_view_body
+    assert "changeActiveView('history');" in open_history_view_body
+
+
+def test_root_route_locks_pi5_text_restart_contract(client) -> None:
+    html = client.get("/").get_data(as_text=True)
+    wait_body = _js_block_after(html, "async function waitForPi5PlaybackRestartWindow()")
+    prepare_body = _js_block_after(html, "async function ensurePi5TextAudioStartReady()")
+    error_body = _js_block_after(html, "function getPi5PlaybackRestartErrorMessage(restartState)")
+    handle_start_body = _js_block_after(html, "async function handleStart()")
+
+    assert "const mediaState = await syncPi5State('media', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in wait_body
+    assert "if (isPi5PlaybackRestartReady(mediaState)) {" in wait_body
+    assert "return { ready: false, timedOut: true, mediaState: state.pi5Media };" in wait_body
+    assert "if (isPi5RecordingActive()) {" in prepare_body
+    assert "await requestPi5PlaybackStop();" in prepare_body
+    assert "if (isPi5PlaybackActive()) {" in prepare_body
+    assert "if (isPi5PlaybackRestartReady(state.pi5Media)) {" in prepare_body
+    assert "return { ready: true, timedOut: false, mediaState: state.pi5Media };" in prepare_body
+    assert "return waitForPi5PlaybackRestartWindow();" in prepare_body
+    assert "if (restartState.timedOut) {" in error_body
+    assert "return getTimeoutMessage(getMessage('speech.pi5_stop_playback'));" in error_body
+    assert "const restartState = await ensurePi5TextAudioStartReady();" in handle_start_body
+    assert "if (!restartState.ready) {" in handle_start_body
+    assert "setFlowStatus('', 'error', getPi5PlaybackRestartErrorMessage(restartState));" in handle_start_body
+
+    load_index = handle_start_body.index("await syncPi5State('media', { silent: true });")
+    restart_index = handle_start_body.index("const restartState = await ensurePi5TextAudioStartReady();")
+    reject_index = handle_start_body.index("if (!restartState.ready) {")
+    processing_index = handle_start_body.index("setFlowStatus(getTaskFlowKey(activeMode, 'processing'), 'processing');")
+    submit_index = handle_start_body.index("await submitTextConversion(activeMode);")
+    assert load_index < restart_index < reject_index < processing_index < submit_index
+
+
+def test_root_route_removes_pr2_second_truth_markers(client) -> None:
+    html = client.get("/").get_data(as_text=True)
+
+    assert "preparePi5TextPlaybackRestart" not in html
+    assert "state.isRecording" not in html
 
 
 def test_root_route_exposes_recording_reuse_mode_picker_contract(client) -> None:

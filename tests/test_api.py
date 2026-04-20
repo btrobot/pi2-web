@@ -347,6 +347,36 @@ def test_pi5_media_state_and_stop_routes_return_stable_payload(client, app):
     }
 
 
+def test_pi5_media_and_recording_state_routes_share_same_coordinator_snapshot(client, app):
+    coordinator = app.extensions["pi5_media_coordinator"]
+    coordinator.state_payload = {
+        "status": "busy",
+        "device": "plughw:2,0",
+        "active_kind": "playback",
+        "playback": {
+            "mode_key": "mt_tts_zh_en",
+            "history_id": 11,
+            "audio_url": "/api/history/11/artifacts/output_audio",
+            "wav_path": "E:/tmp/output.wav",
+            "device": "plughw:2,0",
+            "started_at": "2026-04-20T12:06:00Z",
+            "pid": 4567,
+        },
+        "recording": None,
+        "error": None,
+    }
+    expected_state = dict(coordinator.state_payload)
+
+    media_resp = client.get("/api/pi5/media/state")
+    recording_resp = client.get("/api/pi5/recordings/state")
+
+    assert media_resp.status_code == 200
+    assert recording_resp.status_code == 200
+    assert media_resp.get_json() == {"pi5_media": expected_state}
+    assert recording_resp.get_json() == {"pi5_recording": expected_state}
+    assert media_resp.get_json()["pi5_media"] == recording_resp.get_json()["pi5_recording"]
+
+
 def test_pi5_recording_start_stop_and_state_routes_return_stable_payload(client, app):
     start_resp = client.post("/api/pi5/recordings/start")
     state_resp = client.get("/api/pi5/recordings/state")
