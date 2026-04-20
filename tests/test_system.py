@@ -15,7 +15,8 @@ from api.app import create_app
 
 @pytest.fixture()
 def app(mock_config):
-    flask_app = create_app(mock_config)
+    with patch("api.app._run_startup_checks", return_value={"mt": {"ok": True, "issues": [], "package_dir": "models/data/argos"}}):
+        flask_app = create_app(mock_config)
     flask_app.config["TESTING"] = True
     return flask_app
 

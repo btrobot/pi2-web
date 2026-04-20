@@ -134,7 +134,8 @@ class _FakePlaybackProcess:
 @pytest.fixture
 def app(mock_config):
     """Create Flask test app with mock config."""
-    flask_app = create_app(mock_config)
+    with patch("api.app._run_startup_checks", return_value={"mt": {"ok": True, "issues": [], "package_dir": "models/data/argos"}}):
+        flask_app = create_app(mock_config)
     flask_app.config["TESTING"] = True
     flask_app.extensions["pi5_media_coordinator"] = _StubPi5MediaCoordinator()
     return flask_app
@@ -167,6 +168,32 @@ def test_health_returns_200(client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["status"] == "ok"
+    assert data["checks"]["pipeline"]["ok"] is True
+    assert data["checks"]["mt"]["ok"] is True
+
+
+def test_health_returns_503_when_startup_mt_check_fails(mock_config):
+    with patch(
+        "api.app._run_startup_checks",
+        return_value={
+            "mt": {
+                "ok": False,
+                "issues": ["MT sentence tokenizer unavailable for zh→en: missing stanza model"],
+                "package_dir": "models/data/argos",
+            }
+        },
+    ):
+        flask_app = create_app(mock_config)
+        flask_app.config["TESTING"] = True
+
+    client = flask_app.test_client()
+    resp = client.get("/api/health")
+
+    assert resp.status_code == 503
+    data = resp.get_json()
+    assert data["status"] == "error"
+    assert data["checks"]["mt"]["ok"] is False
+    assert data["checks"]["mt"]["issues"] == ["MT sentence tokenizer unavailable for zh→en: missing stanza model"]
 
 
 def test_real_pi5_media_coordinator_persists_recording_on_stop(mock_config, tmp_audio_file):

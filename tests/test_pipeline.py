@@ -3,6 +3,7 @@
 # 1. Standard library
 from dataclasses import asdict
 import importlib
+from pathlib import Path
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -380,3 +381,45 @@ def test_mt_engine_returns_actionable_error_when_argostranslate_is_missing():
             match="translation engine unavailable: argostranslate is not installed",
         ):
             MTEngine().translate("hello", "en", "zh")
+
+
+def test_validate_mt_runtime_reports_missing_stanza_tokenizer(tmp_path):
+    from models.mt import validate_mt_runtime
+
+    class _FakeTranslation:
+        def __init__(self, package_path: Path) -> None:
+            self.pkg = types.SimpleNamespace(
+                package_path=package_path,
+                packaged_sbd_path=package_path / "stanza",
+                from_code="zh",
+            )
+
+    class _FakeLanguage:
+        def __init__(self, code: str, translation: object | None = None) -> None:
+            self.code = code
+            self._translation = translation
+
+        def get_translation(self, other) -> object | None:  # noqa: ANN001
+            return self._translation if other.code == "en" else None
+
+    package_path = tmp_path / "translate-zh_en"
+    (package_path / "model").mkdir(parents=True)
+    translation = _FakeTranslation(package_path)
+    fake_languages = [_FakeLanguage("zh", translation), _FakeLanguage("en")]
+    translate_module = types.SimpleNamespace(get_installed_languages=lambda: fake_languages)
+    stanza_module = types.SimpleNamespace(Pipeline=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("tokenizer missing")))
+    pipeline_core_module = types.SimpleNamespace(DownloadMethod=types.SimpleNamespace(NONE="none"))
+
+    def _fake_import_module(name: str, package=None):
+        if name == "argostranslate.translate":
+            return translate_module
+        if name == "stanza":
+            return stanza_module
+        if name == "stanza.pipeline.core":
+            return pipeline_core_module
+        return importlib.import_module(name, package)
+
+    with patch("models.mt.importlib.import_module", side_effect=_fake_import_module):
+        issues = validate_mt_runtime(package_dir=tmp_path, allow_network=False, required_pairs=[("zh", "en")])
+
+    assert issues == ["MT sentence tokenizer unavailable for zh→en: tokenizer missing"]

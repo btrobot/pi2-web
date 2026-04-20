@@ -10,6 +10,8 @@ from pathlib import Path
 # 2. Third-party
 import yaml
 
+from models.mt import configure_argos_environment
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -86,6 +88,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = _load_config()
+    configure_argos_environment(config.get("models", {}).get("mt", {}).get("package_path"))
 
     if args.cli:
         logger.info("starting CLI debug mode")
