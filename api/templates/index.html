@@ -485,11 +485,6 @@
       min-height: 54px;
     }
 
-    .result-audio,
-    .recording-audio {
-      width: 100%;
-    }
-
     .recording-card {
       gap: 10px;
     }
@@ -837,24 +832,24 @@
                 <div class="button-row">
                   <button id="speech-record-button" class="secondary-button" type="button" data-i18n="speech.record_start"></button>
                   <button id="speech-stop-button" class="secondary-button" type="button" data-i18n="speech.record_stop"></button>
-                  <label id="speech-upload-label" class="file-button">
-                    <input id="speech-upload-input" type="file" accept=".wav,audio/wav">
-                    <span data-i18n="speech.upload_wav"></span>
-                  </label>
                   <button id="speech-clear-button" class="secondary-button" type="button" data-i18n="speech.clear_audio"></button>
                 </div>
                 <p id="speech-input-hint" class="section-caption"></p>
                 <p id="speech-source-status" class="status-note"></p>
-                <div id="speech-preview-block" class="result-block" hidden>
-                  <p class="result-label" data-i18n="speech.source_audio"></p>
-                  <audio id="speech-preview-player" class="result-audio" controls></audio>
-                </div>
                 <div class="section-divider"></div>
                 <div class="section-row">
                   <p class="field-label" data-i18n="speech.recordings_label"></p>
                   <span id="speech-recordings-count" class="meta-pill">0</span>
                 </div>
                 <div id="speech-recordings-list" class="recording-list"></div>
+              </div>
+
+              <div id="pi5-media-panel" class="panel-stack">
+                <div class="section-row">
+                  <p class="field-label" data-i18n="speech.pi5_media_label"></p>
+                  <button id="pi5-stop-playback-button" class="secondary-button" type="button" data-i18n="speech.pi5_stop_playback"></button>
+                </div>
+                <p id="pi5-media-status" class="status-note"></p>
               </div>
 
               <div class="section-divider"></div>
@@ -882,7 +877,8 @@
               <div id="text-result" class="result-stack" hidden>
                 <div id="result-source-audio-block" class="result-block" hidden>
                   <p id="result-source-audio-label" class="result-label" data-i18n="speech.source_audio"></p>
-                  <audio id="result-source-audio-player" class="result-audio" controls></audio>
+                  <p id="result-source-audio-status" class="status-note"></p>
+                  <a id="result-source-audio-link" class="link-button" href="#" download hidden></a>
                 </div>
 
                 <div id="result-source-block" class="result-block" hidden>
@@ -897,7 +893,8 @@
 
                 <div id="result-audio-block" class="result-block" hidden>
                   <p id="result-audio-label" class="result-label" data-i18n="text.result_audio"></p>
-                  <audio id="result-audio-player" class="result-audio" controls></audio>
+                  <p id="result-audio-status" class="status-note"></p>
+                  <a id="result-audio-link" class="link-button" href="#" download hidden></a>
                 </div>
 
                 <div id="result-actions" class="button-row result-actions">
@@ -1004,20 +1001,17 @@
       flowStatus: { key: 'text.input_hint', tone: 'info', raw: '' },
       recordings: [],
       recordingsState: 'idle',
+      pi5Media: null,
+      pi5MediaPollId: null,
       speechInput: {
         sourceType: '',
-        blob: null,
         fileName: '',
-        previewUrl: '',
-        previewUrlOwned: false,
+        audioUrl: '',
         recordingId: null,
         durationSeconds: 0,
       },
       pendingReuseRecording: null,
-      recordingRuntime: null,
       isRecording: false,
-      recordSeconds: 0,
-      recordTimerId: null,
       history: {
         recent: [],
         recentState: 'idle',
@@ -1273,28 +1267,17 @@
       return grouped;
     }
 
-    function cleanupSpeechPreviewUrl() {
-      if (state.speechInput.previewUrl && state.speechInput.previewUrlOwned) {
-        URL.revokeObjectURL(state.speechInput.previewUrl);
-      }
-    }
-
     function setSpeechInputSource({
       sourceType,
-      blob = null,
       fileName = '',
-      previewUrl = '',
-      previewUrlOwned = false,
+      audioUrl = '',
       recordingId = null,
       durationSeconds = 0,
     }) {
-      cleanupSpeechPreviewUrl();
       state.speechInput = {
         sourceType,
-        blob,
         fileName,
-        previewUrl,
-        previewUrlOwned,
+        audioUrl,
         recordingId,
         durationSeconds,
       };
@@ -1369,12 +1352,41 @@
       const label = document.createElement('p');
       label.className = 'result-label';
       label.textContent = getMessage(labelKey);
-      const audio = document.createElement('audio');
-      audio.className = 'result-audio';
-      audio.controls = true;
-      audio.src = url;
-      block.append(label, audio);
+      const note = document.createElement('p');
+      note.className = 'status-note is-ready';
+      note.textContent = getMessage(
+        labelKey === 'history.output_audio' ? 'speech.pi5_output_playback_hint' : 'speech.pi5_input_archive_hint',
+      );
+      const link = createActionLink(getMessage('text.download_audio'), url);
+      link.setAttribute('download', '');
+      block.append(label, note, link);
       return block;
+    }
+
+    function stopPi5MediaPolling() {
+      if (state.pi5MediaPollId !== null) {
+        window.clearInterval(state.pi5MediaPollId);
+        state.pi5MediaPollId = null;
+      }
+    }
+
+    function syncPi5MediaPolling() {
+      const shouldPoll = Boolean(state.pi5Media && ['playing', 'recording', 'busy'].includes(state.pi5Media.status));
+      if (shouldPoll && state.pi5MediaPollId === null) {
+        state.pi5MediaPollId = window.setInterval(() => {
+          loadPi5MediaState({ silent: true });
+        }, 2000);
+        return;
+      }
+      if (!shouldPoll) {
+        stopPi5MediaPolling();
+      }
+    }
+
+    function applyPi5MediaState(nextState) {
+      state.pi5Media = nextState || null;
+      state.isRecording = Boolean(nextState && nextState.active_kind === 'recording');
+      syncPi5MediaPolling();
     }
 
     function renderViewVisibility() {
@@ -1402,30 +1414,51 @@
       const activeMode = getActiveMode();
       const resultLabel = getTargetResultLabel(activeMode);
       const input = state.speechInput;
+      const pi5Recording = state.pi5Media?.recording;
       if (!activeMode) {
         return getMessage('speech.recording_status_idle');
       }
       if (state.isRecording) {
-        const progress = `${formatSeconds(state.recordSeconds)} / ${formatSeconds(state.constraints?.max_record_seconds || 180)}`;
         if (state.locale === 'zh-CN') {
-          return `\u6b63\u5728\u5f55\u97f3\uff0c\u505c\u6b62\u540e\u5373\u53ef\u751f\u6210${resultLabel}\u3002${progress}`;
+          return `Pi5 正在录音，请在 Pi5 麦克风旁说话；停止后即可生成${resultLabel}。`;
         }
-        return `Recording in progress. Stop when you are ready to generate ${resultLabel}. ${progress}`;
+        return `Pi5 is recording locally. Speak near the Pi5 microphone, then stop when you are ready to generate ${resultLabel}.`;
       }
       if (input.sourceType === 'recording' && input.recordingId !== null) {
-        if (state.locale === 'zh-CN') {
-          return `\u5df2\u51c6\u5907\u597d\u5f55\u97f3 #${input.recordingId}\uff0c\u5f00\u59cb\u540e\u5c06\u751f\u6210${resultLabel}\u3002`;
-        }
-        return `Recording #${input.recordingId} is ready. Start when you are ready to generate ${resultLabel}.`;
-      }
-      if ((input.sourceType === 'record' || input.sourceType === 'upload') && input.fileName) {
         const duration = input.durationSeconds ? ` (${formatSeconds(input.durationSeconds)})` : '';
         if (state.locale === 'zh-CN') {
-          return `\u5df2\u51c6\u5907\u597d\u97f3\u9891 ${input.fileName}${duration}\uff0c\u5f00\u59cb\u540e\u5c06\u751f\u6210${resultLabel}\u3002`;
+          return `已准备好 Pi5 录音 #${input.recordingId}${duration}，开始后将生成${resultLabel}。`;
         }
-        return `Audio ${input.fileName}${duration} is ready. Start when you are ready to generate ${resultLabel}.`;
+        return `Pi5 recording #${input.recordingId}${duration} is ready. Start when you are ready to generate ${resultLabel}.`;
+      }
+      if (pi5Recording?.pending_save) {
+        return getMessage('speech.pi5_recording_starting');
       }
       return getTaskFlowMessage(activeMode, 'idle');
+    }
+
+    function describePi5MediaStatus() {
+      const media = state.pi5Media;
+      if (!media || media.status === 'idle') {
+        return getMessage('speech.pi5_media_idle');
+      }
+      if (media.status === 'error') {
+        const suffix = media.error ? ` ${media.error}` : '';
+        return `${getMessage('speech.pi5_media_error_prefix')}${suffix}`.trim();
+      }
+      if (media.status === 'busy') {
+        return getMessage('speech.pi5_media_busy');
+      }
+      if (media.active_kind === 'recording' || media.status === 'recording') {
+        return getMessage('speech.pi5_media_recording');
+      }
+      if (media.active_kind === 'playback' || media.status === 'playing') {
+        const modeLabel = media.playback?.mode_key ? getLeafLabel(media.playback.mode_key) : '';
+        return modeLabel
+          ? `${getMessage('speech.pi5_media_playing')} (${modeLabel})`
+          : getMessage('speech.pi5_media_playing');
+      }
+      return getMessage('speech.pi5_media_idle');
     }
 
     function setDefaultFlowStatus() {
@@ -1598,8 +1631,7 @@
             clearPendingReuseRecording();
             setSpeechInputSource({
               sourceType: 'recording',
-              previewUrl: reuseRecording.audio_url,
-              previewUrlOwned: false,
+              audioUrl: reuseRecording.audio_url,
               recordingId: reuseRecording.id,
               durationSeconds: reuseRecording.duration_seconds || 0,
               fileName: `recording-${reuseRecording.id}.wav`,
@@ -1650,7 +1682,9 @@
             </div>
             <button type="button" class="recording-action">${getMessage('speech.use_recording')}</button>
           </div>
-          <audio class="recording-audio" controls src="${recording.audio_url}"></audio>
+          <div class="recording-actions">
+            <a class="link-button" href="${recording.audio_url}" download>${getMessage('text.download_audio')}</a>
+          </div>
         `;
         const button = card.querySelector('.recording-action');
         button.classList.toggle('is-active', state.speechInput.sourceType === 'recording' && state.speechInput.recordingId === recording.id);
@@ -1681,21 +1715,21 @@
       const textUploadInput = document.getElementById('text-upload-input');
       const textUploadLabel = document.getElementById('text-upload-label');
       const textClearButton = document.getElementById('text-clear-button');
-      const speechUploadInput = document.getElementById('speech-upload-input');
-      const speechUploadLabel = document.getElementById('speech-upload-label');
       const speechRecordButton = document.getElementById('speech-record-button');
       const speechStopButton = document.getElementById('speech-stop-button');
       const speechClearButton = document.getElementById('speech-clear-button');
-      const speechPreviewBlock = document.getElementById('speech-preview-block');
-      const speechPreviewPlayer = document.getElementById('speech-preview-player');
       const speechHint = document.getElementById('speech-input-hint');
       const speechSourceStatus = document.getElementById('speech-source-status');
+      const pi5MediaPanel = document.getElementById('pi5-media-panel');
+      const pi5MediaStatus = document.getElementById('pi5-media-status');
+      const pi5StopPlaybackButton = document.getElementById('pi5-stop-playback-button');
       const outputCaption = document.getElementById('output-panel-caption');
       const historyCaption = document.getElementById('history-panel-caption');
       const textHint = document.getElementById('text-input-hint');
 
       textSection.hidden = !isText;
       speechSection.hidden = !isSpeech;
+      pi5MediaPanel.hidden = state.activeKind !== 'group' || !activeMode;
 
       textInput.value = state.textInput;
       textInput.disabled = !isText;
@@ -1703,14 +1737,10 @@
       textUploadLabel.classList.toggle('is-disabled', !isText);
       textClearButton.disabled = !isText;
 
-      speechUploadInput.disabled = !isSpeech || state.isRecording;
-      speechUploadLabel.classList.toggle('is-disabled', !isSpeech || state.isRecording);
       speechRecordButton.disabled = !isSpeech || state.isRecording || state.isSubmitting;
-      speechStopButton.disabled = !state.isRecording;
-      speechClearButton.disabled = !isSpeech || state.isRecording;
+      speechStopButton.disabled = !isSpeech || !state.isRecording || state.isSubmitting;
+      speechClearButton.disabled = !isSpeech || state.isRecording || state.isSubmitting;
 
-      speechPreviewBlock.hidden = !isSpeech || !state.speechInput.previewUrl;
-      speechPreviewPlayer.src = isSpeech && state.speechInput.previewUrl ? state.speechInput.previewUrl : '';
       speechHint.textContent = getMessage('speech.input_hint');
       speechSourceStatus.textContent = describeSpeechSelection();
       speechSourceStatus.className = 'status-note';
@@ -1719,6 +1749,17 @@
       } else if (state.speechInput.sourceType) {
         speechSourceStatus.classList.add('is-ready');
       }
+
+      pi5MediaStatus.textContent = describePi5MediaStatus();
+      pi5MediaStatus.className = 'status-note';
+      if (state.pi5Media?.status === 'error') {
+        pi5MediaStatus.classList.add('is-error');
+      } else if (state.pi5Media && ['playing', 'recording', 'busy'].includes(state.pi5Media.status)) {
+        pi5MediaStatus.classList.add('is-processing');
+      } else {
+        pi5MediaStatus.classList.add('is-ready');
+      }
+      pi5StopPlaybackButton.disabled = state.isSubmitting || state.pi5Media?.active_kind !== 'playback';
 
       if (isText && activeMode) {
         textInput.placeholder = getMessage(activeMode.source_lang === 'zh' ? 'text.placeholder.zh' : 'text.placeholder.en');
@@ -1772,7 +1813,7 @@
       if (isSpeechMode(activeMode)) {
         startButton.disabled = state.isSubmitting || !canStartSpeech;
         resetButton.disabled = state.isSubmitting || state.isRecording;
-        saveButton.disabled = state.isSubmitting || state.isRecording || !['record', 'upload'].includes(state.speechInput.sourceType);
+        saveButton.disabled = state.isSubmitting || state.isRecording || state.speechInput.recordingId === null;
         return;
       }
 
@@ -1850,15 +1891,21 @@
       const actionRow = document.getElementById('result-actions');
       const copyButton = document.getElementById('text-copy-button');
       const downloadLink = document.getElementById('text-download-link');
-      const sourceAudioPlayer = document.getElementById('result-source-audio-player');
-      const outputAudioPlayer = document.getElementById('result-audio-player');
+      const sourceAudioStatus = document.getElementById('result-source-audio-status');
+      const sourceAudioLink = document.getElementById('result-source-audio-link');
+      const outputAudioStatus = document.getElementById('result-audio-status');
+      const outputAudioLink = document.getElementById('result-audio-link');
 
       if (!activeMode || !state.lastResult || state.lastResult.modeKey !== activeMode.mode_key) {
         empty.hidden = false;
         empty.textContent = getMessage(getResultEmptyKey(activeMode));
         result.hidden = true;
-        sourceAudioPlayer.removeAttribute('src');
-        outputAudioPlayer.removeAttribute('src');
+        sourceAudioStatus.textContent = '';
+        outputAudioStatus.textContent = '';
+        sourceAudioLink.hidden = true;
+        outputAudioLink.hidden = true;
+        sourceAudioLink.removeAttribute('href');
+        outputAudioLink.removeAttribute('href');
         document.getElementById('result-source-text').textContent = '';
         document.getElementById('result-output-text').textContent = '';
         copyButton.hidden = true;
@@ -1880,8 +1927,16 @@
       copyButton.hidden = !outputText;
       downloadLink.hidden = !outputAudioUrl;
 
-      sourceAudioPlayer.src = inputAudioUrl;
-      outputAudioPlayer.src = outputAudioUrl;
+      sourceAudioStatus.textContent = inputAudioUrl ? getMessage('speech.pi5_input_archive_hint') : '';
+      sourceAudioStatus.className = 'status-note is-ready';
+      sourceAudioLink.hidden = !inputAudioUrl;
+      sourceAudioLink.href = inputAudioUrl || '#';
+      sourceAudioLink.textContent = getMessage('text.download_audio');
+      outputAudioStatus.textContent = outputAudioUrl ? getMessage('speech.pi5_output_playback_hint') : '';
+      outputAudioStatus.className = 'status-note is-ready';
+      outputAudioLink.hidden = !outputAudioUrl;
+      outputAudioLink.href = outputAudioUrl || '#';
+      outputAudioLink.textContent = getMessage('text.download_audio');
       document.getElementById('result-source-text').textContent = sourceText;
       document.getElementById('result-output-text').textContent = outputText;
       downloadLink.href = outputAudioUrl || '#';
@@ -2122,142 +2177,146 @@
       document.documentElement.lang = state.locale;
     }
 
+    function renderPi5MediaSurfaces() {
+      renderInputPanel();
+      renderResult();
+    }
+
     function toggleLocale() {
       setLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN');
     }
 
-    function encodeWav(chunks, sampleRate) {
-      const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-      const samples = new Float32Array(totalLength);
-      let offset = 0;
-      chunks.forEach((chunk) => {
-        samples.set(chunk, offset);
-        offset += chunk.length;
-      });
-
-      const buffer = new ArrayBuffer(44 + samples.length * 2);
-      const view = new DataView(buffer);
-      const writeString = (position, value) => {
-        for (let index = 0; index < value.length; index += 1) {
-          view.setUint8(position + index, value.charCodeAt(index));
-        }
-      };
-
-      writeString(0, 'RIFF');
-      view.setUint32(4, 36 + samples.length * 2, true);
-      writeString(8, 'WAVE');
-      writeString(12, 'fmt ');
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true);
-      view.setUint16(22, 1, true);
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, sampleRate * 2, true);
-      view.setUint16(32, 2, true);
-      view.setUint16(34, 16, true);
-      writeString(36, 'data');
-      view.setUint32(40, samples.length * 2, true);
-
-      let sampleOffset = 44;
-      samples.forEach((sample) => {
-        const clamped = Math.max(-1, Math.min(1, sample));
-        view.setInt16(sampleOffset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
-        sampleOffset += 2;
-      });
-
-      return new Blob([buffer], { type: 'audio/wav' });
-    }
-
-    function stopRecordingTimer() {
-      if (state.recordTimerId !== null) {
-        window.clearInterval(state.recordTimerId);
-        state.recordTimerId = null;
-      }
-    }
-
-    async function finishRecording(reason = 'manual') {
-      if (!state.recordingRuntime) {
-        return;
-      }
-
-      const runtime = state.recordingRuntime;
-      state.recordingRuntime = null;
-      state.isRecording = false;
-      stopRecordingTimer();
-
-      runtime.processor.disconnect();
-      runtime.source.disconnect();
-      runtime.stream.getTracks().forEach((track) => track.stop());
-      await runtime.audioContext.close();
-
-      const blob = encodeWav(runtime.chunks, runtime.sampleRate);
-      const previewUrl = URL.createObjectURL(blob);
-      const durationSeconds = runtime.chunks.reduce((sum, chunk) => sum + chunk.length, 0) / runtime.sampleRate;
-      setSpeechInputSource({
-        sourceType: 'record',
-        blob,
-        fileName: reason === 'limit' ? 'browser-recording-limit.wav' : 'browser-recording.wav',
-        previewUrl,
-        previewUrlOwned: true,
-        durationSeconds,
-      });
-      setFlowStatus('', 'ready', describeSpeechSelection());
-      renderShell();
-    }
-
     async function handleRecordStart() {
-      if (state.isRecording) {
+      const activeMode = getActiveMode();
+      if (state.isRecording || !isSpeechMode(activeMode)) {
         return;
       }
 
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setFlowStatus('speech.recording_unsupported', 'error');
-        return;
-      }
-
-      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextCtor) {
-        setFlowStatus('speech.recording_unsupported', 'error');
-        return;
-      }
-
+      state.isSubmitting = true;
+      setFlowStatus('speech.pi5_recording_starting', 'processing');
+      renderShell();
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioContext = new AudioContextCtor();
-        const source = audioContext.createMediaStreamSource(stream);
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        const chunks = [];
-        processor.onaudioprocess = (event) => {
-          if (!state.isRecording) {
-            return;
+        const response = await fetch('/api/pi5/recordings/start', {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.pi5_recording) {
+            applyPi5MediaState(payload.pi5_recording);
           }
-          chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
-        };
-        source.connect(processor);
-        processor.connect(audioContext.destination);
-
-        cleanupSpeechPreviewUrl();
-        state.speechInput = { sourceType: '', blob: null, fileName: '', previewUrl: '', previewUrlOwned: false, recordingId: null, durationSeconds: 0 };
-        state.recordingRuntime = { stream, audioContext, source, processor, chunks, sampleRate: audioContext.sampleRate };
-        state.isRecording = true;
-        state.recordSeconds = 0;
-        setFlowStatus('', 'processing', describeSpeechSelection());
-        state.recordTimerId = window.setInterval(() => {
-          state.recordSeconds += 1;
-          const maxSeconds = state.constraints?.max_record_seconds || 180;
-          if (state.recordSeconds >= maxSeconds) {
-            finishRecording('limit');
-            return;
-          }
-          renderShell();
-        }, 1000);
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        clearPendingReuseRecording();
+        clearSpeechInputSource();
+        resetResultForModeChange();
+        applyPi5MediaState(payload.pi5_recording);
+        setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
+      } catch (error) {
+        setFlowStatus('', 'error', error.message || getMessage('speech.recording_permission_denied'));
+        await loadPi5RecordingState();
+      } finally {
+        state.isSubmitting = false;
         renderShell();
-      } catch (_error) {
-        setFlowStatus('speech.recording_permission_denied', 'error');
       }
     }
 
     async function handleRecordStop() {
-      await finishRecording('manual');
+      if (!state.isRecording) {
+        return;
+      }
+
+      state.isSubmitting = true;
+      renderShell();
+      try {
+        const response = await fetch('/api/pi5/recordings/stop', {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.pi5_recording) {
+            applyPi5MediaState(payload.pi5_recording);
+          }
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        const recording = payload.recording;
+        applyPi5MediaState(payload.pi5_recording);
+        clearPendingReuseRecording();
+        setSpeechInputSource({
+          sourceType: 'recording',
+          audioUrl: recording.audio_url,
+          recordingId: recording.id,
+          durationSeconds: recording.duration_seconds || 0,
+          fileName: `recording-${recording.id}.wav`,
+        });
+        resetResultForModeChange();
+        await loadRecordings();
+        setFlowStatus('speech.pi5_recording_saved', 'ready', `${getMessage('speech.pi5_recording_saved')} #${recording.id}`);
+      } catch (error) {
+        setFlowStatus('', 'error', error.message || getMessage('speech.pi5_recording_failed'));
+        await loadPi5RecordingState();
+      } finally {
+        state.isSubmitting = false;
+        renderShell();
+      }
+    }
+
+    async function handleStopPlayback() {
+      if (state.pi5Media?.active_kind !== 'playback') {
+        return;
+      }
+
+      state.isSubmitting = true;
+      renderShell();
+      try {
+        const response = await fetch('/api/pi5/media/stop', {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.pi5_media) {
+            applyPi5MediaState(payload.pi5_media);
+          }
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        applyPi5MediaState(payload.pi5_media);
+        setFlowStatus('speech.pi5_playback_stopped', 'ready');
+      } catch (error) {
+        setFlowStatus('', 'error', error.message || getMessage('speech.pi5_playback_stop_failed'));
+        await loadPi5MediaState({ silent: true });
+      } finally {
+        state.isSubmitting = false;
+        renderShell();
+      }
+    }
+
+    async function loadPi5State(path, payloadKey, { silent = false } = {}) {
+      try {
+        const response = await fetch(path, { headers: { Accept: 'application/json' } });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        applyPi5MediaState(payload[payloadKey]);
+      } catch (_error) {
+        applyPi5MediaState(null);
+      }
+      if (silent) {
+        renderPi5MediaSurfaces();
+        return;
+      }
+      renderShell();
+    }
+
+    async function loadPi5RecordingState({ silent = false } = {}) {
+      await loadPi5State('/api/pi5/recordings/state', 'pi5_recording', { silent });
+    }
+
+    async function loadPi5MediaState({ silent = false } = {}) {
+      await loadPi5State('/api/pi5/media/state', 'pi5_media', { silent });
     }
 
     async function loadRecordings() {
@@ -2377,46 +2436,6 @@
       }
     }
 
-    async function handleSpeechUpload(event) {
-      const activeMode = getActiveMode();
-      if (!isSpeechMode(activeMode)) {
-        setFlowStatus('text.non_text_mode_pending', 'info');
-        event.target.value = '';
-        return;
-      }
-
-      const file = event.target.files?.[0];
-      if (!file) {
-        return;
-      }
-
-      const validType = file.name.toLowerCase().endsWith('.wav') || file.type === 'audio/wav';
-      if (!validType) {
-        setFlowStatus('speech.upload_invalid', 'error');
-        event.target.value = '';
-        return;
-      }
-
-      try {
-        const previewUrl = URL.createObjectURL(file);
-        setSpeechInputSource({
-          sourceType: 'upload',
-          blob: file,
-          fileName: file.name,
-          previewUrl,
-          previewUrlOwned: true,
-          durationSeconds: 0,
-        });
-        resetResultForModeChange();
-        setFlowStatus('', 'ready', describeSpeechSelection());
-        renderShell();
-      } catch (_error) {
-        setFlowStatus('speech.upload_failed', 'error');
-      } finally {
-        event.target.value = '';
-      }
-    }
-
     function handleClear() {
       state.textInput = '';
       document.getElementById('text-input').value = '';
@@ -2449,43 +2468,12 @@
         return;
       }
 
-      if (!isSpeechMode(activeMode) || !['record', 'upload'].includes(state.speechInput.sourceType) || !state.speechInput.blob) {
+      if (!isSpeechMode(activeMode) || state.speechInput.recordingId === null) {
         setFlowStatus('speech.input_required', 'error');
         return;
       }
-
-      state.isSubmitting = true;
-      renderActionButtons();
-      try {
-        const formData = new FormData();
-        formData.append('input_audio', new File([state.speechInput.blob], state.speechInput.fileName || 'recording.wav', { type: 'audio/wav' }));
-        const response = await fetch('/api/recordings', {
-          method: 'POST',
-          body: formData,
-          headers: { Accept: 'application/json' },
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error || `HTTP ${response.status}`);
-        }
-
-        const recording = payload.recording;
-        await loadRecordings();
-        setSpeechInputSource({
-          sourceType: 'recording',
-          previewUrl: recording.audio_url,
-          previewUrlOwned: false,
-          recordingId: recording.id,
-          durationSeconds: recording.duration_seconds || 0,
-          fileName: `recording-${recording.id}.wav`,
-        });
-        setFlowStatus('speech.save_recording_success', 'ready', `${getMessage('speech.save_recording_success')} #${recording.id}`);
-      } catch (error) {
-        setFlowStatus('', 'error', error.message || getMessage('speech.save_recording_failed'));
-      } finally {
-        state.isSubmitting = false;
-        renderShell();
-      }
+      setFlowStatus('speech.save_recording_success', 'ready', `${getMessage('speech.save_recording_success')} #${state.speechInput.recordingId}`);
+      renderShell();
     }
 
     async function submitTextConversion(activeMode) {
@@ -2519,7 +2507,7 @@
     }
 
     async function submitSpeechConversion(activeMode) {
-      if (!state.speechInput.sourceType) {
+      if (!state.speechInput.sourceType || state.speechInput.recordingId === null) {
         setFlowStatus('speech.input_required', 'error');
         renderActionButtons();
         return;
@@ -2528,15 +2516,7 @@
       const formData = new FormData();
       formData.append('mode_key', activeMode.mode_key);
       formData.append('persist_input', 'true');
-      if (state.speechInput.sourceType === 'recording' && state.speechInput.recordingId !== null) {
-        formData.append('recording_id', String(state.speechInput.recordingId));
-      } else if (state.speechInput.blob) {
-        formData.append('input_audio', new File([state.speechInput.blob], state.speechInput.fileName || 'speech-input.wav', { type: 'audio/wav' }));
-      } else {
-        setFlowStatus('speech.input_required', 'error');
-        renderActionButtons();
-        return;
-      }
+      formData.append('recording_id', String(state.speechInput.recordingId));
 
       const response = await fetch('/api/conversions/speech', {
         method: 'POST',
@@ -2545,10 +2525,13 @@
       });
       const payload = await response.json();
       if (!response.ok) {
+        if (payload.pi5_media) {
+          applyPi5MediaState(payload.pi5_media);
+        }
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
       state.lastResult = { modeKey: activeMode.mode_key, payload };
-      await loadHistoryData();
+      await Promise.all([loadHistoryData(), loadPi5MediaState()]);
       setFlowStatus(getTaskFlowKey(activeMode, 'ready'), 'ready');
     }
 
@@ -2632,10 +2615,10 @@
     });
     document.getElementById('text-upload-input').addEventListener('change', handleTextUpload);
     document.getElementById('text-clear-button').addEventListener('click', handleClear);
-    document.getElementById('speech-upload-input').addEventListener('change', handleSpeechUpload);
     document.getElementById('speech-clear-button').addEventListener('click', handleSpeechClear);
     document.getElementById('speech-record-button').addEventListener('click', handleRecordStart);
     document.getElementById('speech-stop-button').addEventListener('click', handleRecordStop);
+    document.getElementById('pi5-stop-playback-button').addEventListener('click', handleStopPlayback);
     document.getElementById('text-reset-button').addEventListener('click', handleReset);
     document.getElementById('text-save-button').addEventListener('click', handleSaveInput);
     document.getElementById('text-start-button').addEventListener('click', handleStart);
@@ -2643,12 +2626,11 @@
     document.getElementById('history-view-all-button').addEventListener('click', () => openHistoryView());
     document.getElementById('history-refresh-button').addEventListener('click', () => loadHistoryData());
     window.addEventListener('beforeunload', () => {
-      cleanupSpeechPreviewUrl();
-      stopRecordingTimer();
+      stopPi5MediaPolling();
     });
 
     loadBootstrap()
-      .then(() => Promise.all([loadHealth(), loadRecordings(), loadHistoryData()]))
+      .then(() => Promise.all([loadHealth(), loadRecordings(), loadHistoryData(), loadPi5RecordingState(), loadPi5MediaState()]))
       .catch((error) => {
         state.healthOk = false;
         setFlowStatus('', 'error', error.message || 'bootstrap failed');

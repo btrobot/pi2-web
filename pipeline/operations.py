@@ -2,22 +2,31 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from pipeline._utils import make_output_path
 
 
-def capture_audio(*, config: dict[str, Any], prefix: str) -> str:
+def capture_audio(
+    *,
+    config: dict[str, Any],
+    prefix: str,
+    stop_flag: threading.Event | None = None,
+    output_path: str | None = None,
+    max_duration: int | None = None,
+) -> str:
     """Capture input audio to a timestamped WAV file."""
 
     from audio import record
 
     audio_cfg = config["audio"]
-    output_path = make_output_path(config["storage"], prefix)
+    target_path = output_path or make_output_path(config["storage"], prefix)
     return record(
-        output_path=output_path,
+        output_path=target_path,
         device=audio_cfg["device"],
-        max_duration=audio_cfg["max_record_duration"],
+        stop_flag=stop_flag,
+        max_duration=max_duration or audio_cfg["max_record_duration"],
     )
 
 

@@ -101,18 +101,30 @@ def test_root_route_exposes_speech_mode_controls(client) -> None:
         'id="speech-input-section"',
         'id="speech-record-button"',
         'id="speech-stop-button"',
-        'id="speech-upload-input"',
-        'accept=".wav,audio/wav"',
         'id="speech-clear-button"',
-        'id="speech-preview-player"',
         'id="speech-recordings-list"',
-        'id="result-source-audio-player"',
+        'id="pi5-media-panel"',
+        'id="pi5-media-status"',
+        'id="pi5-stop-playback-button"',
+        'id="speech-source-status"',
+        'id="result-source-audio-link"',
+        'id="result-audio-link"',
     ):
         assert marker in html
 
     assert "/api/conversions/speech" in html
     assert "/api/recordings" in html
-    assert "navigator.mediaDevices?.getUserMedia" in html
+    assert "/api/pi5/recordings/start" in html
+    assert "/api/pi5/recordings/stop" in html
+    assert "/api/pi5/recordings/state" in html
+    assert "/api/pi5/media/state" in html
+    assert "/api/pi5/media/stop" in html
+    assert "loadPi5MediaState({ silent: true });" in html
+    assert "navigator.mediaDevices?.getUserMedia" not in html
+    assert 'id="speech-upload-input"' not in html
+    assert 'id="speech-preview-player"' not in html
+    assert 'id="result-source-audio-player"' not in html
+    assert 'id="result-audio-player"' not in html
 
 
 def test_root_route_exposes_recording_reuse_mode_picker_contract(client) -> None:

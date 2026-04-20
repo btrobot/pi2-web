@@ -5,10 +5,6 @@ import logging
 import threading
 from typing import Optional
 
-# 2. Local
-from audio.capture import AudioCapture, AudioCaptureError
-from audio.playback import play as _play, AudioPlaybackError
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,13 +33,15 @@ def record(
         AudioError: 录音失败时.
     """
     try:
+        from audio.capture import AudioCapture
+
         with AudioCapture(device=device) as mic:
             return mic.record(
                 output_path=output_path,
                 stop_flag=stop_flag,
                 max_duration=max_duration,
             )
-    except AudioCaptureError as e:
+    except Exception as e:
         logger.error("录音失败: error=%s", str(e))
         raise AudioError(str(e)) from e
 
@@ -64,8 +62,10 @@ def play(
         AudioError: 播放失败时.
     """
     try:
+        from audio.playback import play as _play
+
         _play(wav_path=wav_path, device=device, blocking=blocking)
-    except AudioPlaybackError as e:
+    except Exception as e:
         logger.error("播放失败: error=%s", str(e))
         raise AudioError(str(e)) from e
 

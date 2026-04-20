@@ -9,6 +9,7 @@ from typing import Any
 from flask import Blueprint, Response, current_app, jsonify, request
 
 from api.audio_ingest import AudioIngressError, stage_browser_wav_upload
+from audio.media_coordinator import MediaBusyError, MediaCoordinatorError, Pi5MediaCoordinator
 from app.mode_registry import list_mode_definitions
 from storage.history import HistoryManager
 from storage.recordings import RecordingManager
@@ -52,6 +53,13 @@ def _get_recording_manager() -> RecordingManager:
         recordings_dir=storage_cfg["recordings_dir"],
         max_recordings=storage_cfg["max_recordings"],
     )
+
+
+def _get_pi5_media_coordinator() -> Pi5MediaCoordinator:
+    coordinator = current_app.extensions.get("pi5_media_coordinator")
+    if coordinator is None:  # pragma: no cover - create_app always wires this
+        raise RuntimeError("pi5 media coordinator is not configured")
+    return coordinator
 
 
 def _artifact_url(record_id: int, artifact_kind: str, file_name: str | None) -> str | None:
@@ -169,10 +177,56 @@ def _run_conversion(
     if manifest is None:
         return {"error": "conversion record not found after persistence"}, 500
 
+    playback_error = _start_pi5_playback_if_needed(
+        mode_key=mode_key,
+        history_id=history_id,
+        manifest=manifest,
+    )
+    if playback_error is not None:
+        return playback_error
+
     return {
         "record": _record_dto(manifest),
         "result": _result_dto(manifest, result),
     }, 200
+
+
+def _start_pi5_playback_if_needed(
+    *,
+    mode_key: str,
+    history_id: int,
+    manifest: dict[str, Any],
+) -> tuple[dict[str, Any], int] | None:
+    output_audio_name = manifest.get("artifacts", {}).get("output_audio")
+    if not output_audio_name:
+        return None
+
+    output_audio_path = _get_history_manager().get_artifact_path(history_id, "output_audio")
+    if output_audio_path is None:
+        logger.error("missing output audio artifact for Pi5 playback: mode_key=%s, history_id=%s", mode_key, history_id)
+        return {"error": "Pi5 playback artifact was not found"}, 500
+
+    coordinator = _get_pi5_media_coordinator()
+    try:
+        coordinator.start_playback(
+            str(output_audio_path),
+            mode_key=mode_key,
+            history_id=history_id,
+            audio_url=_artifact_url(history_id, "output_audio", output_audio_name),
+        )
+    except MediaBusyError as exc:
+        logger.info("Pi5 playback busy: mode_key=%s, history_id=%s", mode_key, history_id)
+        return {
+            "error": str(exc),
+            "record": _record_dto(manifest),
+            "result": _result_dto(manifest, {}),
+            "pi5_media": coordinator.get_busy_state(requested_action="playback"),
+        }, 409
+    except MediaCoordinatorError as exc:
+        logger.error("Pi5 playback failed to start: mode_key=%s, history_id=%s, error=%s", mode_key, history_id, str(exc))
+        return {"error": f"Pi5 playback failed: {exc}"}, 500
+
+    return None
 
 
 @conversion_bp.route("/api/conversions/text", methods=["POST"])

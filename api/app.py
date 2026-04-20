@@ -5,6 +5,7 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, render_template
 
+from audio.media_coordinator import Pi5MediaCoordinator
 from app.i18n_registry import DEFAULT_LOCALE, SUPPORTED_LOCALES, get_bootstrap_i18n
 from app.mode_registry import list_mode_definitions
 
@@ -44,12 +45,15 @@ def _build_bootstrap_payload(config: dict[str, Any]) -> dict[str, Any]:
 def create_app(config: dict[str, Any]) -> Flask:
     app = Flask(__name__)
     app.config["APP_CONFIG"] = config
+    app.extensions["pi5_media_coordinator"] = Pi5MediaCoordinator(config=config)
 
     from api.conversion_routes import conversion_bp
     from api.history_routes import history_bp
+    from api.pi5_media_routes import pi5_media_bp
     from api.recording_routes import recording_bp
     app.register_blueprint(conversion_bp)
     app.register_blueprint(history_bp)
+    app.register_blueprint(pi5_media_bp)
     app.register_blueprint(recording_bp)
 
     # Pipeline runner 单例，避免每次请求重建

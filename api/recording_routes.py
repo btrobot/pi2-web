@@ -9,6 +9,7 @@ from typing import Any
 from flask import Blueprint, Response, abort, current_app, jsonify, request, send_file
 
 from api.audio_ingest import AudioIngressError, stage_browser_wav_upload
+from api.recording_contracts import recording_item_dto
 from storage.recordings import RecordingManager
 
 logger = logging.getLogger(__name__)
@@ -33,17 +34,6 @@ def _error_response(message: str, status_code: int) -> tuple[Response, int]:
     return jsonify({"error": message}), status_code
 
 
-def _recording_item_dto(recording: dict[str, Any]) -> dict[str, Any]:
-    recording_id = recording["id"]
-    return {
-        "id": recording_id,
-        "created_at": recording["created_at"],
-        "duration_seconds": recording["duration_seconds"],
-        "audio_url": f"/api/recordings/{recording_id}/audio",
-        "reuse": {"recording_id": recording_id},
-    }
-
-
 @recording_bp.route("/api/recordings", methods=["POST"])
 def create_recording() -> tuple[Response, int]:
     upload = request.files.get("input_audio")
@@ -58,7 +48,7 @@ def create_recording() -> tuple[Response, int]:
             return _error_response(str(exc), 400)
 
         recording = _get_manager().save_recording(temp_path)
-        return jsonify({"recording": _recording_item_dto(recording)}), 200
+        return jsonify({"recording": recording_item_dto(recording)}), 200
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to create recording: error=%s", str(exc))
         return _error_response("failed to save recording", 500)
@@ -74,7 +64,7 @@ def create_recording() -> tuple[Response, int]:
 def list_recordings() -> tuple[Response, int]:
     try:
         recordings = list(reversed(_get_manager().list_recordings()))[:5]
-        return jsonify({"items": [_recording_item_dto(item) for item in recordings]}), 200
+        return jsonify({"items": [recording_item_dto(item) for item in recordings]}), 200
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to list recordings: error=%s", str(exc))
         return _error_response("failed to load recordings", 500)

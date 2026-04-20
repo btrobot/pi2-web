@@ -96,3 +96,6 @@ pytest -q
 
 - If `pyalsaaudio` fails on Windows, that is expected; use `requirements-dev.txt` instead of the Pi profile.
 - Real ASR/TTS/recording validation should still be executed on Raspberry Pi hardware with the required models installed.
+- Web audio-output modes now target **Pi5-local ALSA playback**; use `GET /api/pi5/media/state` to inspect playback state and `POST /api/pi5/media/stop` to stop the active Pi5 playback session.
+- Pi5-local recording now uses `POST /api/pi5/recordings/start`, `GET /api/pi5/recordings/state`, and `POST /api/pi5/recordings/stop`; the stop route persists a standard recording item that can be reused via `recording_id` in `/api/conversions/speech`.
+- The web UI is now a Pi5 control plane: it polls Pi5 media state while recording/playback is active, exposes a browser-side “Stop Pi5 playback” control, and keeps artifact links for download/archive rather than in-browser audio playback.

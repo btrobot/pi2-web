@@ -14,10 +14,101 @@ from werkzeug.datastructures import FileStorage
 
 # 3. Local
 from api.audio_ingest import AudioIngressError, stage_browser_wav_upload
+from audio.media_coordinator import MediaBusyError, MediaCoordinatorError, Pi5MediaCoordinator
 from app.mode_registry import get_mode_definition, list_mode_definitions
 from api.app import create_app
 from storage.history import HistoryManager
 from storage.recordings import RecordingManager
+
+
+class _StubPi5MediaCoordinator:
+    def __init__(self) -> None:
+        self.start_calls: list[dict[str, object]] = []
+        self.start_error: Exception | None = None
+        self.recording_start_error: Exception | None = None
+        self.recording_stop_error: Exception | None = None
+        self.recording_result = {
+            "id": 7,
+            "created_at": "2026-04-20T12:07:00",
+            "duration_seconds": 1.2,
+        }
+        self.state_payload = {
+            "status": "idle",
+            "device": "plughw:2,0",
+            "active_kind": None,
+            "playback": None,
+            "recording": None,
+            "error": None,
+        }
+
+    def get_state(self) -> dict[str, object]:
+        return dict(self.state_payload)
+
+    def get_busy_state(self, *, requested_action: str) -> dict[str, object]:
+        payload = self.get_state()
+        payload["status"] = "busy"
+        payload["requested_action"] = requested_action
+        return payload
+
+    def start_playback(
+        self,
+        wav_path: str,
+        *,
+        mode_key: str,
+        history_id: int,
+        audio_url: str | None,
+    ) -> dict[str, object]:
+        self.start_calls.append(
+            {
+                "wav_path": wav_path,
+                "mode_key": mode_key,
+                "history_id": history_id,
+                "audio_url": audio_url,
+            }
+        )
+        if self.start_error is not None:
+            raise self.start_error
+        return self.get_state()
+
+    def stop_playback(self) -> dict[str, object]:
+        self.state_payload = {
+            **self.state_payload,
+            "status": "idle",
+            "active_kind": None,
+            "playback": None,
+            "error": None,
+        }
+        return self.get_state()
+
+    def start_recording(self) -> dict[str, object]:
+        if self.recording_start_error is not None:
+            raise self.recording_start_error
+        self.state_payload = {
+            **self.state_payload,
+            "status": "recording",
+            "active_kind": "recording",
+            "playback": None,
+            "recording": {
+                "started_at": "2026-04-20T12:06:00Z",
+                "device": "plughw:2,0",
+                "max_duration_seconds": 180,
+                "pending_save": False,
+            },
+            "error": None,
+        }
+        return self.get_state()
+
+    def stop_recording(self) -> dict[str, object]:
+        if self.recording_stop_error is not None:
+            raise self.recording_stop_error
+        self.state_payload = {
+            **self.state_payload,
+            "status": "idle",
+            "active_kind": None,
+            "recording": None,
+            "error": None,
+        }
+        return dict(self.recording_result)
 
 
 @pytest.fixture
@@ -25,6 +116,7 @@ def app(mock_config):
     """Create Flask test app with mock config."""
     flask_app = create_app(mock_config)
     flask_app.config["TESTING"] = True
+    flask_app.extensions["pi5_media_coordinator"] = _StubPi5MediaCoordinator()
     return flask_app
 
 
@@ -55,6 +147,173 @@ def test_health_returns_200(client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["status"] == "ok"
+
+
+def test_real_pi5_media_coordinator_persists_recording_on_stop(mock_config, tmp_audio_file):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+
+    def _fake_capture_audio(*, config, prefix, stop_flag, output_path, max_duration):  # noqa: ARG001
+        Path(output_path).write_bytes(tmp_audio_file.read_bytes())
+        assert stop_flag is not None
+        stop_flag.wait(timeout=0.05)
+        return output_path
+
+    with patch("audio.media_coordinator.capture_audio", side_effect=_fake_capture_audio):
+        start_state = coordinator.start_recording()
+        saved = coordinator.stop_recording()
+
+    assert start_state["status"] == "recording"
+    assert saved["id"] == 1
+    assert saved["duration_seconds"] == 1.0
+    manager = _recording_manager(mock_config)
+    stored = manager.get_recording(1)
+    assert stored is not None
+    assert manager.get_audio_path(1) is not None
+    assert coordinator.get_state() == {
+        "status": "idle",
+        "device": "plughw:2,0",
+        "active_kind": None,
+        "playback": None,
+        "recording": None,
+        "error": None,
+    }
+
+
+def test_pi5_media_state_and_stop_routes_return_stable_payload(client, app):
+    coordinator = app.extensions["pi5_media_coordinator"]
+    coordinator.state_payload = {
+        "status": "playing",
+        "device": "plughw:2,0",
+        "active_kind": "playback",
+        "playback": {
+            "mode_key": "tts_zh_zh",
+            "history_id": 9,
+            "audio_url": "/api/history/9/artifacts/output_audio",
+            "wav_path": "E:/tmp/output.wav",
+            "device": "plughw:2,0",
+            "started_at": "2026-04-20T12:05:00Z",
+            "pid": 1234,
+        },
+        "recording": None,
+        "error": None,
+    }
+    expected_state = dict(coordinator.state_payload)
+
+    state_resp = client.get("/api/pi5/media/state")
+    stop_resp = client.post("/api/pi5/media/stop")
+
+    assert state_resp.status_code == 200
+    assert state_resp.get_json() == {"pi5_media": expected_state}
+    assert stop_resp.status_code == 200
+    assert stop_resp.get_json() == {
+        "ok": True,
+        "pi5_media": {
+            "status": "idle",
+            "device": "plughw:2,0",
+            "active_kind": None,
+            "playback": None,
+            "recording": None,
+            "error": None,
+        },
+    }
+
+
+def test_pi5_recording_start_stop_and_state_routes_return_stable_payload(client, app):
+    start_resp = client.post("/api/pi5/recordings/start")
+    state_resp = client.get("/api/pi5/recordings/state")
+    stop_resp = client.post("/api/pi5/recordings/stop")
+
+    assert start_resp.status_code == 200
+    assert start_resp.get_json() == {
+        "pi5_recording": {
+            "status": "recording",
+            "device": "plughw:2,0",
+            "active_kind": "recording",
+            "playback": None,
+            "recording": {
+                "started_at": "2026-04-20T12:06:00Z",
+                "device": "plughw:2,0",
+                "max_duration_seconds": 180,
+                "pending_save": False,
+            },
+            "error": None,
+        }
+    }
+    assert state_resp.status_code == 200
+    assert state_resp.get_json() == start_resp.get_json()
+    assert stop_resp.status_code == 200
+    assert stop_resp.get_json() == {
+        "recording": {
+            "id": 7,
+            "created_at": "2026-04-20T12:07:00",
+            "duration_seconds": 1.2,
+            "audio_url": "/api/recordings/7/audio",
+            "reuse": {"recording_id": 7},
+        },
+        "pi5_recording": {
+            "status": "idle",
+            "device": "plughw:2,0",
+            "active_kind": None,
+            "playback": None,
+            "recording": None,
+            "error": None,
+        },
+    }
+
+
+def test_pi5_recording_start_returns_busy_payload_when_playback_is_active(client, app):
+    coordinator = app.extensions["pi5_media_coordinator"]
+    coordinator.recording_start_error = MediaBusyError("Pi5 media is busy with playback")
+    coordinator.state_payload = {
+        "status": "playing",
+        "device": "plughw:2,0",
+        "active_kind": "playback",
+        "playback": {"mode_key": "tts_zh_zh"},
+        "recording": None,
+        "error": None,
+    }
+
+    resp = client.post("/api/pi5/recordings/start")
+
+    assert resp.status_code == 409
+    assert resp.get_json() == {
+        "error": "Pi5 media is busy with playback",
+        "pi5_recording": {
+            "status": "busy",
+            "device": "plughw:2,0",
+            "active_kind": "playback",
+            "playback": {"mode_key": "tts_zh_zh"},
+            "recording": None,
+            "error": None,
+            "requested_action": "recording",
+        },
+    }
+
+
+def test_pi5_recording_stop_surfaces_failure_state(client, app):
+    coordinator = app.extensions["pi5_media_coordinator"]
+    coordinator.recording_stop_error = MediaCoordinatorError("Pi5 recording did not finish cleanly")
+    coordinator.state_payload = {
+        "status": "error",
+        "device": "plughw:2,0",
+        "active_kind": None,
+        "playback": None,
+        "recording": {
+            "started_at": "2026-04-20T12:06:00Z",
+            "device": "plughw:2,0",
+            "max_duration_seconds": 180,
+            "pending_save": True,
+        },
+        "error": "Pi5 recording did not finish cleanly",
+    }
+
+    resp = client.post("/api/pi5/recordings/stop")
+
+    assert resp.status_code == 500
+    assert resp.get_json() == {
+        "error": "Pi5 recording did not finish cleanly",
+        "pi5_recording": coordinator.state_payload,
+    }
 
 
 def test_index_uses_task_header_without_breadcrumb(client):
@@ -438,6 +697,20 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "speech.no_recordings",
         "speech.use_recording",
         "speech.recording_selected",
+        "speech.pi5_media_label",
+        "speech.pi5_media_idle",
+        "speech.pi5_media_recording",
+        "speech.pi5_media_playing",
+        "speech.pi5_media_busy",
+        "speech.pi5_media_error_prefix",
+        "speech.pi5_stop_playback",
+        "speech.pi5_playback_stopped",
+        "speech.pi5_playback_stop_failed",
+        "speech.pi5_recording_starting",
+        "speech.pi5_recording_saved",
+        "speech.pi5_recording_failed",
+        "speech.pi5_input_archive_hint",
+        "speech.pi5_output_playback_hint",
     }
 
     assert set(data["i18n"].keys()) == {"zh-CN", "en-US"}
@@ -479,10 +752,15 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["result.empty.audio"] == "最终语音结果会优先显示在这里。"
     assert zh["result.label.target_text"] == "中间目标文本"
     assert zh["text.copy_output"] == "复制最终文本"
-    assert zh["text.download_audio"] == "下载最终语音"
+    assert zh["text.download_audio"] == "下载音频归档"
     assert zh["panel.input"] == "输入与操作"
     assert zh["panel.output"] == "输出结果"
     assert zh["speech.record_start"] == "开始录音"
+    assert zh["speech.input_hint"] == "浏览器只负责控制；请在 Pi5 麦克风旁开始/停止录音，或复用已保存的 Pi5 录音。"
+    assert zh["help.speech_desc"] == "在语音输入模式中，浏览器只负责控制；请在 Pi5 麦克风旁录音、复用录音库中的 Pi5 录音，并在 Pi5 侧收听播放。"
+    assert zh["speech.pi5_media_label"] == "Pi5 设备状态"
+    assert zh["speech.pi5_stop_playback"] == "停止 Pi5 播放"
+    assert zh["speech.pi5_output_playback_hint"] == "输出 WAV 已交给 Pi5 本地 ALSA 播放；浏览器仅提供下载归档。"
     assert "?" not in zh["flow.ready.speech_to_text"]
 
     assert en["header.language_switch"] == "中文"
@@ -497,12 +775,16 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert en["result.empty.audio"] == "The final audio result will appear here first."
     assert en["result.label.target_text"] == "Intermediate target text"
     assert en["text.copy_output"] == "Copy final text"
-    assert en["text.download_audio"] == "Download final audio"
+    assert en["text.download_audio"] == "Download audio archive"
     assert en["panel.input"] == "Input & actions"
     assert en["panel.output"] == "Results"
     assert en["speech.use_recording"] == "Use this recording"
     assert en["task.speech_to_text"] == "Speech→Text"
-    assert en["speech.input_hint"] == "Record in browser, upload a WAV, or reuse a saved recording before you start."
+    assert en["speech.input_hint"] == "The browser is control-plane only. Start/stop recording near the Pi5 microphone, or reuse a saved Pi5 recording before you start."
+    assert en["help.speech_desc"] == "In speech-input modes, the browser is control-plane only: record near the Pi5 microphone, reuse saved Pi5 recordings, and listen for playback on the Pi5 itself."
+    assert en["speech.pi5_media_label"] == "Pi5 device state"
+    assert en["speech.pi5_stop_playback"] == "Stop Pi5 playback"
+    assert en["speech.pi5_output_playback_hint"] == "The output WAV has been handed to Pi5 local ALSA playback; the browser only exposes a download archive."
     assert en["history.full_title"] == "History management"
     assert en["history.export"] == "Export history"
     assert en["panel.settings"] == "Settings panel"
@@ -587,6 +869,52 @@ def test_text_conversion_returns_frozen_record_and_result_dto(client, app, mode_
         input_audio_path=None,
         playback=False,
     )
+
+
+def test_text_conversion_triggers_pi5_playback_for_audio_output_modes(client, app, tmp_audio_file):
+    mode_key = "tts_zh_zh"
+    app.config["PIPELINE_FN"] = MagicMock(return_value={"history_id": 12})
+    manifest = {
+        "id": 12,
+        "mode_key": mode_key,
+        "group_key": "same_text_to_speech",
+        "source_lang": "zh",
+        "target_lang": "zh",
+        "created_at": "2026-04-20T12:00:00",
+        "artifacts": {
+            "input_text": "input_text.txt",
+            "output_text": None,
+            "input_audio": None,
+            "output_audio": "output_audio.wav",
+        },
+        "values": {
+            "source_text": "你好",
+            "output_text": None,
+        },
+    }
+
+    with patch("api.conversion_routes.HistoryManager") as mock_mgr:
+        mock_mgr.return_value.get_manifest.return_value = manifest
+        mock_mgr.return_value.get_artifact_path.return_value = tmp_audio_file
+
+        resp = client.post(
+            "/api/conversions/text",
+            json={
+                "mode_key": mode_key,
+                "input_text": "你好",
+            },
+        )
+
+    assert resp.status_code == 200
+    coordinator = app.extensions["pi5_media_coordinator"]
+    assert coordinator.start_calls == [
+        {
+            "wav_path": str(tmp_audio_file),
+            "mode_key": "tts_zh_zh",
+            "history_id": 12,
+            "audio_url": "/api/history/12/artifacts/output_audio",
+        }
+    ]
 
 
 def test_text_conversion_rejects_invalid_mode_key(client):
@@ -823,6 +1151,78 @@ def test_speech_conversion_accepts_recording_id_reuse(client, app, tmp_audio_fil
         input_audio_path=str(tmp_audio_file),
         playback=False,
     )
+
+
+def test_speech_conversion_returns_busy_state_when_pi5_playback_is_occupied(client, app, tmp_audio_file):
+    mode_key = "asr_mt_tts_zh_en"
+    coordinator = app.extensions["pi5_media_coordinator"]
+    coordinator.start_error = MediaBusyError("Pi5 media is busy with playback")
+    app.config["PIPELINE_FN"] = MagicMock(return_value={"history_id": 14})
+    manifest = {
+        "id": 14,
+        "mode_key": mode_key,
+        "group_key": "cross_speech_to_speech",
+        "source_lang": "zh",
+        "target_lang": "en",
+        "created_at": "2026-04-20T12:01:00",
+        "artifacts": {
+            "input_text": None,
+            "output_text": "output_text.txt",
+            "input_audio": "input_audio.wav",
+            "output_audio": "output_audio.wav",
+        },
+        "values": {
+            "source_text": "你好",
+            "output_text": "Hello",
+        },
+    }
+
+    with patch("api.conversion_routes.RecordingManager") as mock_recording_mgr, \
+         patch("api.conversion_routes.HistoryManager") as mock_history_mgr:
+        mock_recording_mgr.return_value.get_audio_path.return_value = tmp_audio_file
+        mock_history_mgr.return_value.get_manifest.return_value = manifest
+        mock_history_mgr.return_value.get_artifact_path.return_value = tmp_audio_file
+        resp = client.post(
+            "/api/conversions/speech",
+            data={
+                "mode_key": mode_key,
+                "recording_id": "3",
+            },
+            content_type="multipart/form-data",
+        )
+
+    assert resp.status_code == 409
+    assert resp.get_json() == {
+        "error": "Pi5 media is busy with playback",
+        "record": {
+            "id": 14,
+            "mode_key": mode_key,
+            "group_key": "cross_speech_to_speech",
+            "source_lang": "zh",
+            "target_lang": "en",
+            "created_at": "2026-04-20T12:01:00",
+            "artifacts": {
+                "input_text_url": None,
+                "output_text_url": "/api/history/14/artifacts/output_text",
+                "input_audio_url": "/api/history/14/artifacts/input_audio",
+                "output_audio_url": "/api/history/14/artifacts/output_audio",
+            },
+        },
+        "result": {
+            "source_text": "你好",
+            "output_text": "Hello",
+            "output_audio_url": "/api/history/14/artifacts/output_audio",
+        },
+        "pi5_media": {
+            "status": "busy",
+            "device": "plughw:2,0",
+            "active_kind": None,
+            "playback": None,
+            "recording": None,
+            "error": None,
+            "requested_action": "playback",
+        },
+    }
 
 
 def test_speech_conversion_rejects_invalid_mode_key(client):
