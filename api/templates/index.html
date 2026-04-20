@@ -1023,7 +1023,8 @@
     };
     const PI5_RECORD_START_TIMEOUT_MS = 4000;
     const PI5_STATE_TIMEOUT_MS = 1500;
-    const PI5_PLAYBACK_RESTART_TIMEOUT_MS = 3000;
+    const PI5_PLAYBACK_STOP_TIMEOUT_MS = 4500;
+    const PI5_PLAYBACK_RESTART_TIMEOUT_MS = 5000;
 
     function getMessage(key) {
       return state.i18n?.[state.locale]?.[key] ?? '';
@@ -1242,6 +1243,10 @@
 
     function isSpeechMode(mode) {
       return Boolean(mode && mode.input_type === 'audio');
+    }
+
+    function isTextAudioMode(mode) {
+      return Boolean(isTextMode(mode) && mode.output_type === 'audio');
     }
 
     function getModeByKey(modeKey) {
@@ -1842,6 +1847,7 @@
       const canStartSpeech = Boolean(state.speechInput.sourceType) && !state.isRecording;
       const hasAnyState = Boolean(state.textInput || state.speechInput.sourceType || state.lastResult);
       const pi5Busy = isPi5MediaBusy();
+      const textAudioMode = isTextAudioMode(activeMode);
       const pi5RecordingBusy = state.pi5Media?.active_kind === 'recording';
 
       startButton.textContent = getMessage('text.start');
@@ -1849,7 +1855,7 @@
       saveButton.textContent = isSpeechMode(activeMode) ? getMessage('speech.save_recording') : getMessage('text.save_input');
 
       if (isTextMode(activeMode)) {
-        startButton.disabled = state.isSubmitting || pi5RecordingBusy;
+        startButton.disabled = state.isSubmitting || (textAudioMode && pi5RecordingBusy);
         resetButton.disabled = state.isSubmitting && !hasAnyState;
         saveButton.disabled = false;
         return;
@@ -2330,7 +2336,7 @@
           method: 'POST',
           headers: { Accept: 'application/json' },
         },
-        { timeoutMs: PI5_STATE_TIMEOUT_MS },
+        { timeoutMs: PI5_PLAYBACK_STOP_TIMEOUT_MS },
       );
       if (payload.pi5_media) {
         applyPi5MediaState(payload.pi5_media);
@@ -2632,26 +2638,30 @@
         setFlowStatus('text.non_text_mode_pending', 'info');
         return;
       }
-
-      await loadPi5MediaState({ silent: true });
-      if (isTextMode(activeMode)) {
-        const readyForTextRestart = await preparePi5TextPlaybackRestart();
-        if (!readyForTextRestart) {
-          setFlowStatus('speech.pi5_media_busy', 'error');
-          renderShell();
-          return;
-        }
-      } else if (isPi5MediaBusy()) {
-        setFlowStatus('speech.pi5_media_busy', 'error');
-        renderShell();
+      if (state.isSubmitting) {
         return;
       }
 
       state.isSubmitting = true;
       renderActionButtons();
-      setFlowStatus(getTaskFlowKey(activeMode, 'processing'), 'processing');
 
       try {
+        if (isTextAudioMode(activeMode)) {
+          await loadPi5MediaState({ silent: true });
+          const readyForTextRestart = await preparePi5TextPlaybackRestart();
+          if (!readyForTextRestart) {
+            setFlowStatus('speech.pi5_media_busy', 'error');
+            return;
+          }
+        } else if (isSpeechMode(activeMode)) {
+          await loadPi5MediaState({ silent: true });
+          if (isPi5MediaBusy()) {
+            setFlowStatus('speech.pi5_media_busy', 'error');
+            return;
+          }
+        }
+
+        setFlowStatus(getTaskFlowKey(activeMode, 'processing'), 'processing');
         if (isTextMode(activeMode)) {
           await submitTextConversion(activeMode);
         } else {
