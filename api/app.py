@@ -8,7 +8,7 @@ from flask import Flask, Response, jsonify, render_template
 from audio.media_coordinator import Pi5MediaCoordinator
 from app.i18n_registry import DEFAULT_LOCALE, SUPPORTED_LOCALES, get_bootstrap_i18n
 from app.mode_registry import list_mode_definitions
-from models.mt import configure_argos_environment, validate_mt_runtime
+from models.mt import configure_argos_environment, get_argos_package_dirs, validate_mt_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -16,18 +16,20 @@ logger = logging.getLogger(__name__)
 def _run_startup_checks(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     mt_cfg = config.get("models", {}).get("mt", {})
     package_dir = configure_argos_environment(mt_cfg.get("package_path"))
+    searched_dirs = [str(path) for path in get_argos_package_dirs(package_dir)]
     mt_issues = validate_mt_runtime(package_dir=package_dir, allow_network=False)
 
     if mt_issues:
         logger.warning("startup MT self-check failed: %s", " | ".join(mt_issues))
     else:
-        logger.info("startup MT self-check passed: package_dir=%s", package_dir)
+        logger.info("startup MT self-check passed: searched_dirs=%s", searched_dirs)
 
     return {
         "mt": {
             "ok": not mt_issues,
             "issues": mt_issues,
             "package_dir": str(package_dir) if package_dir is not None else None,
+            "searched_dirs": searched_dirs,
         }
     }
 

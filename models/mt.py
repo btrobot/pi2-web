@@ -2,6 +2,7 @@
 import importlib
 import logging
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Iterable
@@ -20,12 +21,74 @@ def configure_argos_environment(package_dir: str | Path | None) -> Path | None:
     """Point Argos Translate at the configured package directory before import."""
 
     if package_dir is None:
+        _refresh_argos_runtime(_discover_argos_package_dirs(None))
         return None
 
     resolved_dir = Path(package_dir).expanduser().resolve()
     resolved_dir.mkdir(parents=True, exist_ok=True)
     os.environ["ARGOS_PACKAGES_DIR"] = str(resolved_dir)
+    _refresh_argos_runtime(_discover_argos_package_dirs(resolved_dir))
     return resolved_dir
+
+
+def _default_argos_package_dir() -> Path:
+    home_dir = Path.home()
+    if "SNAP" in os.environ:
+        home_dir = Path(os.environ["SNAP_USER_DATA"])
+
+    data_home = Path(os.getenv("XDG_DATA_HOME", default=home_dir / ".local" / "share"))
+    return (data_home / "argos-translate" / "packages").expanduser().resolve()
+
+
+def _discover_argos_package_dirs(package_dir: str | Path | None) -> list[Path]:
+    package_dirs: list[Path] = []
+    configured_dir = Path(package_dir).expanduser().resolve() if package_dir is not None else None
+
+    for candidate in (configured_dir, _default_argos_package_dir()):
+        if candidate is None:
+            continue
+        candidate.mkdir(parents=True, exist_ok=True)
+        if candidate not in package_dirs:
+            package_dirs.append(candidate)
+
+    return package_dirs
+
+
+def _refresh_argos_runtime(package_dirs: list[Path]) -> None:
+    if not package_dirs:
+        return
+
+    try:
+        settings_module = importlib.import_module("argostranslate.settings")
+    except ModuleNotFoundError:
+        return
+
+    settings_module.package_data_dir = package_dirs[0]
+    settings_module.package_dirs = package_dirs
+
+    translate_module = sys.modules.get("argostranslate.translate")
+    if translate_module is None:
+        return
+
+    cache_clear = getattr(translate_module.get_installed_languages, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
+
+    installed_translates = getattr(translate_module, "installed_translates", None)
+    if isinstance(installed_translates, list):
+        installed_translates.clear()
+
+
+def get_argos_package_dirs(package_dir: str | Path | None) -> list[Path]:
+    """Return every package directory the app will search for Argos packages."""
+
+    return _discover_argos_package_dirs(package_dir)
+
+
+def describe_argos_package_dirs(package_dir: str | Path | None) -> str:
+    """Human-readable Argos package search path summary."""
+
+    return ", ".join(str(path) for path in get_argos_package_dirs(package_dir))
 
 
 def _validate_stanza_dependency(
@@ -70,6 +133,7 @@ def validate_mt_runtime(
     """Validate offline MT dependencies for the configured language pairs."""
 
     configure_argos_environment(package_dir)
+    searched_dirs = describe_argos_package_dirs(package_dir)
 
     try:
         translate_module = importlib.import_module("argostranslate.translate")
@@ -87,17 +151,19 @@ def validate_mt_runtime(
     for source_lang, target_lang in required_pairs:
         source = languages.get(source_lang)
         if source is None:
-            issues.append(f"MT package missing source language: {source_lang}")
+            issues.append(f"MT package missing source language: {source_lang} (searched: {searched_dirs})")
             continue
 
         target = languages.get(target_lang)
         if target is None:
-            issues.append(f"MT package missing target language: {target_lang}")
+            issues.append(f"MT package missing target language: {target_lang} (searched: {searched_dirs})")
             continue
 
         translation = source.get_translation(target)
         if translation is None:
-            issues.append(f"MT package missing translation pair: {source_lang}→{target_lang}")
+            issues.append(
+                f"MT package missing translation pair: {source_lang}→{target_lang} (searched: {searched_dirs})"
+            )
             continue
 
         pkg = getattr(translation, "pkg", None)
@@ -150,15 +216,22 @@ class MTEngine:
         try:
             installed = self._get_translate_module().get_installed_languages()
             langs = {lang.code: lang for lang in installed}
+            searched_dirs = describe_argos_package_dirs(os.environ.get("ARGOS_PACKAGES_DIR"))
 
             if source_lang not in langs:
-                raise TranslationError(f"source language package is not installed: {source_lang}")
+                raise TranslationError(
+                    f"source language package is not installed: {source_lang} (searched: {searched_dirs})"
+                )
             if target_lang not in langs:
-                raise TranslationError(f"target language package is not installed: {target_lang}")
+                raise TranslationError(
+                    f"target language package is not installed: {target_lang} (searched: {searched_dirs})"
+                )
 
             translation = langs[source_lang].get_translation(langs[target_lang])
             if translation is None:
-                raise TranslationError(f"translation package not found: {source_lang} → {target_lang}")
+                raise TranslationError(
+                    f"translation package not found: {source_lang} → {target_lang} (searched: {searched_dirs})"
+                )
 
             self._translations[pair] = translation
             logger.info("翻译模型加载完成: %s → %s", source_lang, target_lang)

@@ -3,6 +3,7 @@
 # 1. Standard library
 from dataclasses import asdict
 import importlib
+import os
 from pathlib import Path
 import sys
 import types
@@ -409,6 +410,7 @@ def test_validate_mt_runtime_reports_missing_stanza_tokenizer(tmp_path):
     translate_module = types.SimpleNamespace(get_installed_languages=lambda: fake_languages)
     stanza_module = types.SimpleNamespace(Pipeline=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("tokenizer missing")))
     pipeline_core_module = types.SimpleNamespace(DownloadMethod=types.SimpleNamespace(NONE="none"))
+    real_import_module = importlib.import_module
 
     def _fake_import_module(name: str, package=None):
         if name == "argostranslate.translate":
@@ -417,9 +419,89 @@ def test_validate_mt_runtime_reports_missing_stanza_tokenizer(tmp_path):
             return stanza_module
         if name == "stanza.pipeline.core":
             return pipeline_core_module
-        return importlib.import_module(name, package)
+        return real_import_module(name, package)
 
     with patch("models.mt.importlib.import_module", side_effect=_fake_import_module):
         issues = validate_mt_runtime(package_dir=tmp_path, allow_network=False, required_pairs=[("zh", "en")])
 
     assert issues == ["MT sentence tokenizer unavailable for zh→en: tokenizer missing"]
+
+
+def test_configure_argos_environment_falls_back_to_default_package_dir(monkeypatch, tmp_path):
+    from models.mt import configure_argos_environment
+
+    configured_dir = tmp_path / "configured-argos"
+    default_dir = tmp_path / "default-argos"
+    translate_module = types.SimpleNamespace(
+        get_installed_languages=types.SimpleNamespace(cache_clear=MagicMock()),
+        installed_translates=[object()],
+    )
+    settings_module = types.SimpleNamespace(package_data_dir=None, package_dirs=[])
+    real_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package=None):
+        if name == "argostranslate.settings":
+            return settings_module
+        return real_import_module(name, package)
+
+    monkeypatch.setattr("models.mt._default_argos_package_dir", lambda: default_dir)
+    monkeypatch.setitem(sys.modules, "argostranslate.translate", translate_module)
+
+    with patch("models.mt.importlib.import_module", side_effect=_fake_import_module):
+        resolved = configure_argos_environment(configured_dir)
+
+    assert resolved == configured_dir.resolve()
+    assert os.environ["ARGOS_PACKAGES_DIR"] == str(configured_dir.resolve())
+    assert settings_module.package_data_dir == configured_dir.resolve()
+    assert settings_module.package_dirs == [configured_dir.resolve(), default_dir.resolve()]
+    translate_module.get_installed_languages.cache_clear.assert_called_once_with()
+    assert translate_module.installed_translates == []
+
+
+def test_validate_mt_runtime_uses_default_argos_dir_when_configured_dir_is_empty(monkeypatch, tmp_path):
+    from models.mt import validate_mt_runtime
+
+    configured_dir = tmp_path / "configured-argos"
+    default_dir = tmp_path / "default-argos"
+
+    class _FakeTranslation:
+        def __init__(self, package_path: Path) -> None:
+            self.pkg = types.SimpleNamespace(
+                package_path=package_path,
+                packaged_sbd_path=None,
+                from_code="zh",
+            )
+
+    class _FakeLanguage:
+        def __init__(self, code: str, translation: object | None = None) -> None:
+            self.code = code
+            self._translation = translation
+
+        def get_translation(self, other) -> object | None:  # noqa: ANN001
+            return self._translation if other.code == "en" else None
+
+    package_path = default_dir / "translate-zh_en"
+    (package_path / "model").mkdir(parents=True)
+    translation = _FakeTranslation(package_path)
+    fake_languages = [_FakeLanguage("zh", translation), _FakeLanguage("en")]
+    translate_module = types.SimpleNamespace(get_installed_languages=lambda: fake_languages)
+    settings_module = types.SimpleNamespace(package_data_dir=None, package_dirs=[])
+    real_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package=None):
+        if name == "argostranslate.translate":
+            return translate_module
+        if name == "argostranslate.settings":
+            return settings_module
+        return real_import_module(name, package)
+
+    monkeypatch.setattr("models.mt._default_argos_package_dir", lambda: default_dir)
+
+    with patch("models.mt.importlib.import_module", side_effect=_fake_import_module):
+        issues = validate_mt_runtime(
+            package_dir=configured_dir,
+            allow_network=False,
+            required_pairs=[("zh", "en")],
+        )
+
+    assert issues == []
