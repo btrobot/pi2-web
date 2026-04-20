@@ -320,6 +320,11 @@
       align-items: start;
     }
 
+    .workbench-grid.is-recordings-view {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: 'input';
+    }
+
     .shell-card {
       min-height: 220px;
       display: grid;
@@ -809,7 +814,7 @@
                 </div>
               </div>
 
-              <div class="mode-picker-block">
+              <div id="mode-picker-block" class="mode-picker-block">
                 <p id="mode-picker-label" class="field-label" data-i18n="text.mode_picker"></p>
                 <div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>
               </div>
@@ -833,6 +838,7 @@
                   <button id="speech-record-button" class="secondary-button" type="button" data-i18n="speech.record_start"></button>
                   <button id="speech-stop-button" class="secondary-button" type="button" data-i18n="speech.record_stop"></button>
                   <button id="speech-clear-button" class="secondary-button" type="button" data-i18n="speech.clear_audio"></button>
+                  <button id="recordings-back-button" class="secondary-button" type="button" data-i18n="recordings.back_to_main" hidden></button>
                 </div>
                 <p id="speech-input-hint" class="section-caption"></p>
                 <p id="speech-source-status" class="status-note"></p>
@@ -854,7 +860,7 @@
 
               <div class="section-divider"></div>
 
-              <div class="panel-stack input-actions">
+              <div id="input-actions" class="panel-stack input-actions">
                 <div class="button-row">
                   <button id="text-start-button" class="primary-button" type="button"></button>
                   <button id="text-reset-button" class="secondary-button" type="button"></button>
@@ -1480,9 +1486,15 @@
     function renderViewVisibility() {
       const shellGrid = document.getElementById('app-shell-grid');
       const historySection = document.getElementById('history-full-section');
+      const outputPanel = document.getElementById('app-output-panel');
+      const recentHistoryPanel = document.getElementById('app-history-panel');
       const isHistoryView = state.activeKind === 'history';
+      const isRecordingsView = state.activeKind === 'recordings';
       shellGrid.hidden = isHistoryView;
       historySection.hidden = !isHistoryView;
+      shellGrid.classList.toggle('is-recordings-view', isRecordingsView);
+      outputPanel.hidden = isRecordingsView;
+      recentHistoryPanel.hidden = isRecordingsView;
     }
 
     function toggleUtilityPanel(panelKey) {
@@ -1553,6 +1565,10 @@
         setFlowStatus('', 'info', getPendingReusePrompt(state.pendingReuseRecording.id));
         return;
       }
+      if (state.activeKind === 'recordings') {
+        setFlowStatus('recordings.idle', 'info');
+        return;
+      }
       const activeMode = getActiveMode();
       if (state.activeKind !== 'group') {
         setFlowStatus('text.non_text_mode_pending', 'info');
@@ -1581,7 +1597,9 @@
       const button = document.getElementById(id);
       button.classList.toggle('is-active', state.activeKind === kind);
       button.querySelector('.nav-label').textContent = label;
-      button.querySelector('.nav-count').textContent = '1';
+      button.querySelector('.nav-count').textContent = kind === 'recordings'
+        ? String(state.recordings.length)
+        : '1';
       button.onclick = () => changeActiveView(kind);
     }
 
@@ -1741,7 +1759,7 @@
       const list = document.getElementById('speech-recordings-list');
       const count = document.getElementById('speech-recordings-count');
       list.innerHTML = '';
-      count.textContent = String(state.recordings.length);
+      count.textContent = `${state.recordings.length} / ${state.constraints?.max_recordings ?? 5}`;
 
       if (state.recordingsState === 'loading') {
         list.innerHTML = `<p class="recording-empty">${getMessage('speech.recordings_loading')}</p>`;
@@ -1759,6 +1777,7 @@
       }
 
       state.recordings.forEach((recording) => {
+        const isRecordingsView = state.activeKind === 'recordings';
         const card = document.createElement('article');
         card.className = 'recording-card';
         card.innerHTML = `
@@ -1767,42 +1786,55 @@
               <p class="recording-title">#${recording.id}</p>
               <p class="recording-meta">${recording.created_at} \u00b7 ${formatSeconds(recording.duration_seconds)}</p>
             </div>
-            <button type="button" class="recording-action">${getMessage('speech.use_recording')}</button>
+            ${isRecordingsView ? '' : `<button type="button" class="recording-action">${getMessage('speech.use_recording')}</button>`}
           </div>
           <div class="recording-actions">
             <a class="link-button" href="${recording.audio_url}" download>${getMessage('text.download_audio')}</a>
           </div>
         `;
         const button = card.querySelector('.recording-action');
-        button.classList.toggle('is-active', state.speechInput.sourceType === 'recording' && state.speechInput.recordingId === recording.id);
-        button.onclick = () => {
-          const currentMode = getActiveMode();
-          if (isSpeechReuseMode(currentMode)) {
-            applyRecordingReuse(recording, currentMode);
-            return;
-          }
-          state.activeKind = 'group';
-          state.activeGroupKey = 'same_speech_to_text';
-          state.activeModeKey = '';
-          state.pendingReuseRecording = {
-            id: recording.id,
-            audio_url: recording.audio_url,
-            duration_seconds: recording.duration_seconds || 0,
+        if (button) {
+          button.classList.toggle('is-active', state.speechInput.sourceType === 'recording' && state.speechInput.recordingId === recording.id);
+          button.onclick = () => {
+            const currentMode = getActiveMode();
+            if (isSpeechReuseMode(currentMode)) {
+              applyRecordingReuse(recording, currentMode);
+              return;
+            }
+            state.activeKind = 'group';
+            state.activeGroupKey = 'same_speech_to_text';
+            state.activeModeKey = '';
+            state.pendingReuseRecording = {
+              id: recording.id,
+              audio_url: recording.audio_url,
+              duration_seconds: recording.duration_seconds || 0,
+            };
+            resetResultForModeChange();
+            setFlowStatus('', 'info', getPendingReusePrompt(recording.id));
+            renderShell();
           };
-          resetResultForModeChange();
-          setFlowStatus('', 'info', getPendingReusePrompt(recording.id));
-          renderShell();
-        };
+        }
         list.appendChild(card);
       });
+    }
+
+    function getRecordingsViewStatus() {
+      if (isPi5RecordingActive()) {
+        return getMessage('recordings.active');
+      }
+      return `${getMessage('recordings.idle')} (${state.recordings.length} / ${state.constraints?.max_recordings ?? 5})`;
     }
 
     function renderInputPanel() {
       const activeMode = getActiveMode();
       const isText = state.activeKind === 'group' && isTextMode(activeMode);
       const isSpeech = state.activeKind === 'group' && isSpeechMode(activeMode);
+      const isRecordingsView = state.activeKind === 'recordings';
+      const isSpeechSurface = isSpeech || isRecordingsView;
       const textSection = document.getElementById('text-input-section');
       const speechSection = document.getElementById('speech-input-section');
+      const modePickerBlock = document.getElementById('mode-picker-block');
+      const inputActions = document.getElementById('input-actions');
       const textInput = document.getElementById('text-input');
       const textUploadInput = document.getElementById('text-upload-input');
       const textUploadLabel = document.getElementById('text-upload-label');
@@ -1810,6 +1842,7 @@
       const speechRecordButton = document.getElementById('speech-record-button');
       const speechStopButton = document.getElementById('speech-stop-button');
       const speechClearButton = document.getElementById('speech-clear-button');
+      const recordingsBackButton = document.getElementById('recordings-back-button');
       const speechHint = document.getElementById('speech-input-hint');
       const speechSourceStatus = document.getElementById('speech-source-status');
       const pi5MediaPanel = document.getElementById('pi5-media-panel');
@@ -1819,9 +1852,11 @@
       const historyCaption = document.getElementById('history-panel-caption');
       const textHint = document.getElementById('text-input-hint');
 
+      modePickerBlock.hidden = state.activeKind !== 'group';
+      inputActions.hidden = isRecordingsView;
       textSection.hidden = !isText;
-      speechSection.hidden = !isSpeech;
-      pi5MediaPanel.hidden = state.activeKind !== 'group' || !activeMode;
+      speechSection.hidden = !isSpeechSurface;
+      pi5MediaPanel.hidden = !(isRecordingsView || (state.activeKind === 'group' && activeMode));
 
       textInput.value = state.textInput;
       textInput.disabled = !isText;
@@ -1830,16 +1865,21 @@
       textClearButton.disabled = !isText;
 
       const pi5RecordingActive = isPi5RecordingActive();
-      speechRecordButton.disabled = !isSpeech || pi5RecordingActive || state.isSubmitting;
-      speechStopButton.disabled = !isSpeech || !pi5RecordingActive || state.isSubmitting;
+      speechRecordButton.textContent = isRecordingsView ? getMessage('recordings.start') : getMessage('speech.record_start');
+      speechStopButton.textContent = isRecordingsView ? getMessage('recordings.finish') : getMessage('speech.record_stop');
+      speechRecordButton.disabled = !isSpeechSurface || pi5RecordingActive || state.isSubmitting;
+      speechStopButton.disabled = !isSpeechSurface || !pi5RecordingActive || state.isSubmitting;
+      speechClearButton.hidden = isRecordingsView;
       speechClearButton.disabled = !isSpeech || pi5RecordingActive || state.isSubmitting;
+      recordingsBackButton.hidden = !isRecordingsView;
+      recordingsBackButton.disabled = state.isSubmitting || pi5RecordingActive;
 
-      speechHint.textContent = getMessage('speech.input_hint');
-      speechSourceStatus.textContent = describeSpeechSelection();
+      speechHint.textContent = isRecordingsView ? getMessage('recordings.hint') : getMessage('speech.input_hint');
+      speechSourceStatus.textContent = isRecordingsView ? getRecordingsViewStatus() : describeSpeechSelection();
       speechSourceStatus.className = 'status-note';
       if (pi5RecordingActive) {
         speechSourceStatus.classList.add('is-processing');
-      } else if (state.speechInput.sourceType) {
+      } else if (isRecordingsView || state.speechInput.sourceType) {
         speechSourceStatus.classList.add('is-ready');
       }
 
@@ -1854,7 +1894,9 @@
       }
       pi5StopPlaybackButton.disabled = state.isSubmitting || !isPi5PlaybackActive();
 
-      if (isText && activeMode) {
+      if (isRecordingsView) {
+        textHint.textContent = '';
+      } else if (isText && activeMode) {
         textInput.placeholder = getMessage(activeMode.source_lang === 'zh' ? 'text.placeholder.zh' : 'text.placeholder.en');
         textHint.textContent = getMessage('text.input_hint');
         outputCaption.textContent = getResultPanelMessage(activeMode);
@@ -2300,7 +2342,8 @@
 
     async function handleRecordStart() {
       const activeMode = getActiveMode();
-      if (isPi5RecordingActive() || !isSpeechMode(activeMode)) {
+      const recordingsView = state.activeKind === 'recordings';
+      if (isPi5RecordingActive() || (!recordingsView && !isSpeechMode(activeMode))) {
         return;
       }
 
@@ -2322,12 +2365,20 @@
         clearSpeechInputSource();
         resetResultForModeChange();
         applyPi5MediaState(payload.pi5_recording);
-        setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
+        if (recordingsView) {
+          setFlowStatus('recordings.active', 'processing');
+        } else {
+          setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
+        }
       } catch (error) {
         const fallbackMessage = error.message || getMessage('speech.recording_permission_denied');
         const recoveredState = await syncPi5State('recording', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
         if (isPi5RecordingActive(recoveredState)) {
-          setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
+          if (recordingsView) {
+            setFlowStatus('recordings.active', 'processing');
+          } else {
+            setFlowStatus('speech.recording_status_active', 'processing', describeSpeechSelection());
+          }
         } else {
           setFlowStatus('', 'error', fallbackMessage);
         }
@@ -2342,6 +2393,7 @@
         return;
       }
 
+      const recordingsView = state.activeKind === 'recordings';
       state.isSubmitting = true;
       renderShell();
       try {
@@ -2360,16 +2412,24 @@
         const recording = payload.recording;
         applyPi5MediaState(payload.pi5_recording);
         clearPendingReuseRecording();
-        setSpeechInputSource({
-          sourceType: 'recording',
-          audioUrl: recording.audio_url,
-          recordingId: recording.id,
-          durationSeconds: recording.duration_seconds || 0,
-          fileName: `recording-${recording.id}.wav`,
-        });
+        if (recordingsView) {
+          clearSpeechInputSource();
+        } else {
+          setSpeechInputSource({
+            sourceType: 'recording',
+            audioUrl: recording.audio_url,
+            recordingId: recording.id,
+            durationSeconds: recording.duration_seconds || 0,
+            fileName: `recording-${recording.id}.wav`,
+          });
+        }
         resetResultForModeChange();
         await loadRecordings();
-        setFlowStatus('speech.pi5_recording_saved', 'ready', `${getMessage('speech.pi5_recording_saved')} #${recording.id}`);
+        if (recordingsView) {
+          setFlowStatus('recordings.saved', 'ready', `${getMessage('recordings.saved')} #${recording.id}`);
+        } else {
+          setFlowStatus('speech.pi5_recording_saved', 'ready', `${getMessage('speech.pi5_recording_saved')} #${recording.id}`);
+        }
       } catch (error) {
         setFlowStatus('', 'error', error.message || getMessage('speech.pi5_recording_failed'));
         await syncPi5State('recording');
@@ -2807,6 +2867,7 @@
     document.getElementById('speech-clear-button').addEventListener('click', handleSpeechClear);
     document.getElementById('speech-record-button').addEventListener('click', handleRecordStart);
     document.getElementById('speech-stop-button').addEventListener('click', handleRecordStop);
+    document.getElementById('recordings-back-button').addEventListener('click', () => changeActiveView('group', GROUP_ORDER[0]));
     document.getElementById('pi5-stop-playback-button').addEventListener('click', handleStopPlayback);
     document.getElementById('text-reset-button').addEventListener('click', handleReset);
     document.getElementById('text-save-button').addEventListener('click', handleSaveInput);

@@ -553,10 +553,10 @@ def test_index_input_panel_contract_integrates_mode_picker_and_actions(client):
     assert re.search(
         r'<section id="app-input-panel" class="shell-card" aria-labelledby="input-panel-title">.*?'
         r'<p id="input-panel-caption" class="section-caption" data-i18n="panel.input_caption"></p>.*?'
-        r'<div class="mode-picker-block">.*?'
+        r'<div id="mode-picker-block" class="mode-picker-block">.*?'
         r'<p id="mode-picker-label" class="field-label" data-i18n="text.mode_picker"></p>.*?'
         r'<div id="text-mode-picker" class="mode-picker" role="tablist" data-i18n-attr="aria-label:a11y.mode_picker"></div>.*?'
-        r'<div class="panel-stack input-actions">.*?'
+        r'<div id="input-actions" class="panel-stack input-actions">.*?'
         r'id="text-start-button".*?'
         r'id="text-reset-button".*?'
         r'id="text-save-button".*?'
@@ -666,6 +666,58 @@ def test_index_recording_reuse_contract_preserves_current_speech_direction_when_
     assert "if (isSpeechReuseMode(currentMode)) {" in recordings_body
     assert "applyRecordingReuse(recording, currentMode);" in recordings_body
     assert "state.pendingReuseRecording = {" in recordings_body
+
+
+def test_index_recordings_view_contract_exposes_start_finish_and_back_controls(client):
+    html = _get_index_html(client)
+    script = _get_index_script(html)
+
+    assert 'id="recordings-back-button"' in html
+    assert 'id="mode-picker-block"' in html
+    assert 'id="input-actions"' in html
+    assert re.search(
+        r"function renderViewVisibility\(\)\s*\{.*?"
+        r"const outputPanel = document\.getElementById\('app-output-panel'\);.*?"
+        r"const recentHistoryPanel = document\.getElementById\('app-history-panel'\);.*?"
+        r"const isRecordingsView = state\.activeKind === 'recordings';.*?"
+        r"shellGrid\.classList\.toggle\('is-recordings-view', isRecordingsView\);.*?"
+        r"outputPanel\.hidden = isRecordingsView;.*?"
+        r"recentHistoryPanel\.hidden = isRecordingsView;",
+        script,
+        flags=re.S,
+    )
+    assert re.search(
+        r"function renderInputPanel\(\)\s*\{.*?"
+        r"const isRecordingsView = state\.activeKind === 'recordings';.*?"
+        r"const isSpeechSurface = isSpeech \|\| isRecordingsView;.*?"
+        r"modePickerBlock\.hidden = state\.activeKind !== 'group';.*?"
+        r"inputActions\.hidden = isRecordingsView;.*?"
+        r"speechSection\.hidden = !isSpeechSurface;.*?"
+        r"speechRecordButton\.textContent = isRecordingsView \? getMessage\('recordings\.start'\) : getMessage\('speech\.record_start'\);.*?"
+        r"speechStopButton\.textContent = isRecordingsView \? getMessage\('recordings\.finish'\) : getMessage\('speech\.record_stop'\);.*?"
+        r"recordingsBackButton\.hidden = !isRecordingsView;",
+        script,
+        flags=re.S,
+    )
+
+
+def test_index_recordings_view_handlers_allow_recording_without_active_conversion_mode(client):
+    script = _get_index_script(_get_index_html(client))
+
+    record_start = script.index("async function handleRecordStart() {")
+    record_stop = script.index("\n\n    async function handleRecordStop()", record_start)
+    start_body = script[record_start:record_stop]
+    assert "const recordingsView = state.activeKind === 'recordings';" in start_body
+    assert "if (isPi5RecordingActive() || (!recordingsView && !isSpeechMode(activeMode))) {" in start_body
+    assert "setFlowStatus('recordings.active', 'processing');" in start_body
+
+    stop_start = script.index("async function handleRecordStop() {")
+    stop_end = script.index("\n\n    function waitForDuration", stop_start)
+    stop_body = script[stop_start:stop_end]
+    assert "const recordingsView = state.activeKind === 'recordings';" in stop_body
+    assert "if (recordingsView) {" in stop_body
+    assert "clearSpeechInputSource();" in stop_body
+    assert "setFlowStatus('recordings.saved', 'ready'" in stop_body
 
 
 @pytest.mark.parametrize(
@@ -946,6 +998,13 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "speech.pi5_recording_failed",
         "speech.pi5_input_archive_hint",
         "speech.pi5_output_playback_hint",
+        "recordings.start",
+        "recordings.finish",
+        "recordings.back_to_main",
+        "recordings.hint",
+        "recordings.idle",
+        "recordings.active",
+        "recordings.saved",
     }
 
     assert set(data["i18n"].keys()) == {"zh-CN", "en-US"}
@@ -980,7 +1039,7 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["panel.input_caption"] == "选择语言方向、准备输入内容，然后开始转换。"
     assert zh["task_header.current_task"] == "当前工作流"
     assert zh["task_header.pick_direction"] == "选择语言方向后开始"
-    assert zh["task_header.recordings_caption"].startswith("可在这里查看录音")
+    assert zh["task_header.recordings_caption"].startswith("可在这里开始 Pi5 本地录音")
     assert zh["flow.processing.text_to_speech"] == "正在生成目标语音，请稍候。"
     assert zh["flow.ready.speech_to_text"] == "目标文本已生成，可复制或继续核对；原始语音保留在下方供回听。"
     assert zh["result.caption.speech_to_speech"] == "这里会先显示最终语音结果，播放与下载操作紧随其后；中间文本与原始语音保留在后面供核对。"
@@ -991,6 +1050,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["panel.input"] == "输入与操作"
     assert zh["panel.output"] == "输出结果"
     assert zh["speech.record_start"] == "开始录音"
+    assert zh["recordings.finish"] == "输入完毕"
+    assert zh["recordings.back_to_main"] == "返回主菜单"
     assert zh["speech.input_hint"] == "浏览器只负责控制；请在 Pi5 麦克风旁开始/停止录音，或复用已保存的 Pi5 录音。"
     assert zh["help.speech_desc"] == "在语音输入模式中，浏览器只负责控制；请在 Pi5 麦克风旁录音、复用录音库中的 Pi5 录音，并在 Pi5 侧收听播放。"
     assert zh["speech.pi5_media_label"] == "Pi5 设备状态"
@@ -1003,7 +1064,7 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert en["panel.input_caption"] == "Choose a language direction, prepare the input, then start the conversion."
     assert en["task_header.current_task"] == "Current workflow"
     assert en["task_header.pick_direction"] == "Choose a language direction to begin"
-    assert en["task_header.recordings_caption"].startswith("Review saved recordings")
+    assert en["task_header.recordings_caption"].startswith("Start a Pi5 local recording here")
     assert en["flow.processing.text_to_speech"] == "Generating the final audio result. Please wait."
     assert en["flow.ready.speech_to_text"] == "The final text result is ready to copy or review, with the source audio kept below for replay."
     assert en["result.caption.speech_to_speech"] == "The final audio result appears first, with play and download actions right after it; intermediate text and the source audio stay after it for review."
@@ -1012,6 +1073,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert en["text.copy_output"] == "Copy final text"
     assert en["text.download_audio"] == "Download audio archive"
     assert en["panel.input"] == "Input & actions"
+    assert en["recordings.finish"] == "Finish input"
+    assert en["recordings.back_to_main"] == "Back to main menu"
     assert en["panel.output"] == "Results"
     assert en["speech.use_recording"] == "Use this recording"
     assert en["task.speech_to_text"] == "Speech→Text"
