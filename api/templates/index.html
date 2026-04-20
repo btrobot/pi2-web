@@ -1963,6 +1963,9 @@
       const sourceAudioLink = document.getElementById('result-source-audio-link');
       const outputAudioStatus = document.getElementById('result-audio-status');
       const outputAudioLink = document.getElementById('result-audio-link');
+      const sourceTextNode = document.getElementById('result-source-text');
+      const outputTextNode = document.getElementById('result-output-text');
+      const resultNodes = [sourceAudioBlock, sourceBlock, outputBlock, audioBlock, actionRow];
 
       if (!activeMode || !state.lastResult || state.lastResult.modeKey !== activeMode.mode_key) {
         empty.hidden = false;
@@ -1974,8 +1977,8 @@
         outputAudioLink.hidden = true;
         sourceAudioLink.removeAttribute('href');
         outputAudioLink.removeAttribute('href');
-        document.getElementById('result-source-text').textContent = '';
-        document.getElementById('result-output-text').textContent = '';
+        sourceTextNode.textContent = '';
+        outputTextNode.textContent = '';
         copyButton.hidden = true;
         downloadLink.hidden = true;
         return;
@@ -2005,8 +2008,8 @@
       outputAudioLink.hidden = !outputAudioUrl;
       outputAudioLink.href = outputAudioUrl || '#';
       outputAudioLink.textContent = getMessage('text.download_audio');
-      document.getElementById('result-source-text').textContent = sourceText;
-      document.getElementById('result-output-text').textContent = outputText;
+      sourceTextNode.textContent = sourceText;
+      outputTextNode.textContent = outputText;
       downloadLink.href = outputAudioUrl || '#';
       downloadLink.textContent = getMessage('text.download_audio');
       copyButton.textContent = getMessage('text.copy_output');
@@ -2023,8 +2026,10 @@
         block.hidden = false;
         block.classList.toggle('is-final', item.isFinal);
         label.textContent = getMessage(item.labelKey);
-        orderedChildren.push(block);
-        if (index === 0 && !actionRow.hidden) {
+        if (!orderedChildren.includes(block)) {
+          orderedChildren.push(block);
+        }
+        if (index === 0 && !actionRow.hidden && !orderedChildren.includes(actionRow)) {
           orderedChildren.push(actionRow);
         }
       });
@@ -2033,7 +2038,13 @@
         orderedChildren.push(actionRow);
       }
 
-      result.replaceChildren(...orderedChildren);
+      resultNodes.forEach((node) => {
+        if (!orderedChildren.includes(node)) {
+          orderedChildren.push(node);
+        }
+      });
+
+      result.append(...orderedChildren);
 
       empty.hidden = true;
       result.hidden = false;

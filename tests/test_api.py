@@ -603,17 +603,22 @@ def test_index_result_narrative_contract_keeps_final_result_first_and_actions_ad
         script,
         flags=re.S,
     )
-    assert re.search(
-        r"function renderResult\(\)\s*\{.*?"
-        r"const narrative = buildResultNarrative\(activeMode, sourceText, outputText, inputAudioUrl, outputAudioUrl\);"
-        r".*?narrative\.forEach\(\(item, index\) => \{.*?orderedChildren\.push\(block\);"
-        r".*?if \(index === 0 && !actionRow\.hidden\) \{\s*orderedChildren\.push\(actionRow\);\s*\}"
-        r".*?\}\);"
-        r".*?if \(!orderedChildren\.length && !actionRow\.hidden\) \{\s*orderedChildren\.push\(actionRow\);\s*\}"
-        r".*?result\.replaceChildren\(\.\.\.orderedChildren\);",
-        script,
-        flags=re.S,
-    )
+    render_start = script.index("function renderResult() {")
+    render_end = script.index("\n\n    function openHistoryView", render_start)
+    render_body = script[render_start:render_end]
+
+    for marker in (
+        "const resultNodes = [sourceAudioBlock, sourceBlock, outputBlock, audioBlock, actionRow];",
+        "const narrative = buildResultNarrative(activeMode, sourceText, outputText, inputAudioUrl, outputAudioUrl);",
+        "if (!orderedChildren.includes(block)) {",
+        "if (index === 0 && !actionRow.hidden && !orderedChildren.includes(actionRow)) {",
+        "if (!orderedChildren.length && !actionRow.hidden) {",
+        "resultNodes.forEach((node) => {",
+        "result.append(...orderedChildren);",
+    ):
+        assert marker in render_body
+
+    assert "result.replaceChildren(...orderedChildren);" not in render_body
 
 
 def test_index_flow_copy_contract_uses_task_language_helpers(client):

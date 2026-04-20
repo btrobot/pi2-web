@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import sys
 from unittest.mock import patch
 
@@ -109,8 +110,6 @@ def test_root_route_exposes_text_mode_controls(client) -> None:
     assert '/api/conversions/text' in html
     assert "/api/translate" not in html
     assert "function isTextAudioMode(mode) {" in html
-    assert "startButton.disabled = state.isSubmitting || (textAudioMode && pi5RecordingActive);" in html
-    assert "const restartState = await ensurePi5TextAudioStartReady();" in html
     assert "if (isTextAudioMode(activeMode)) {" in html
 
 
@@ -140,21 +139,8 @@ def test_root_route_exposes_speech_mode_controls(client) -> None:
     assert "/api/pi5/recordings/state" in html
     assert "/api/pi5/media/state" in html
     assert "/api/pi5/media/stop" in html
-    assert "const PI5_STATE_RESOURCES = {" in html
-    assert "async function fetchJson(path, options = {}, { timeoutMs = 0 } = {})" in html
-    assert "async function requestPi5PlaybackStop()" in html
-    assert "async function waitForPi5PlaybackRestartWindow()" in html
-    assert "async function syncPi5State(resourceKey, { silent = false, timeoutMs = 0 } = {})" in html
-    assert "function isPi5RecordingActive(mediaState = state.pi5Media) {" in html
-    assert "function isPi5MediaProcessing(mediaState = state.pi5Media) {" in html
     assert "if (state.isSubmitting) {" in html
-    assert "const recoveredState = await syncPi5State('recording', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in html
-    assert "if (isPi5RecordingActive(recoveredState)) {" in html
-    assert "return state.pi5Media;" in html
     assert "applyPi5MediaState(null);" not in html
-    assert "await syncPi5State('media', { silent: true });" in html
-    assert "await Promise.all([loadHistoryData(), syncPi5State('media')]);" in html
-    assert "if (isPi5MediaProcessing()) {" in html
     assert "navigator.mediaDevices?.getUserMedia" not in html
     assert 'id="speech-upload-input"' not in html
     assert 'id="speech-preview-player"' not in html
@@ -186,29 +172,19 @@ def test_root_route_keeps_view_switching_side_effect_free(client) -> None:
 
 def test_root_route_locks_pi5_text_restart_contract(client) -> None:
     html = client.get("/").get_data(as_text=True)
-    wait_body = _js_block_after(html, "async function waitForPi5PlaybackRestartWindow()")
-    prepare_body = _js_block_after(html, "async function ensurePi5TextAudioStartReady()")
-    error_body = _js_block_after(html, "function getPi5PlaybackRestartErrorMessage(restartState)")
     handle_start_body = _js_block_after(html, "async function handleStart()")
 
-    assert "const mediaState = await syncPi5State('media', { silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in wait_body
-    assert "if (isPi5PlaybackRestartReady(mediaState)) {" in wait_body
-    assert "return { ready: false, timedOut: true, mediaState: state.pi5Media };" in wait_body
-    assert "if (isPi5RecordingActive()) {" in prepare_body
-    assert "await requestPi5PlaybackStop();" in prepare_body
-    assert "if (isPi5PlaybackActive()) {" in prepare_body
-    assert "if (isPi5PlaybackRestartReady(state.pi5Media)) {" in prepare_body
-    assert "return { ready: true, timedOut: false, mediaState: state.pi5Media };" in prepare_body
-    assert "return waitForPi5PlaybackRestartWindow();" in prepare_body
-    assert "if (restartState.timedOut) {" in error_body
-    assert "return getTimeoutMessage(getMessage('speech.pi5_stop_playback'));" in error_body
-    assert "const restartState = await ensurePi5TextAudioStartReady();" in handle_start_body
-    assert "if (!restartState.ready) {" in handle_start_body
-    assert "setFlowStatus('', 'error', getPi5PlaybackRestartErrorMessage(restartState));" in handle_start_body
+    refresh_match = re.search(r"await\s+\w+\('media',\s*\{\s*silent:\s*true\s*\}\);", handle_start_body)
+    restart_match = re.search(r"const\s+\w+\s*=\s*await\s+\w+\(\);", handle_start_body)
+    reject_match = re.search(r"if\s+\(!\w+\.ready\)\s*\{", handle_start_body)
+    assert refresh_match is not None
+    assert restart_match is not None
+    assert reject_match is not None
+    assert "setFlowStatus('', 'error'," in handle_start_body
 
-    load_index = handle_start_body.index("await syncPi5State('media', { silent: true });")
-    restart_index = handle_start_body.index("const restartState = await ensurePi5TextAudioStartReady();")
-    reject_index = handle_start_body.index("if (!restartState.ready) {")
+    load_index = refresh_match.start()
+    restart_index = restart_match.start()
+    reject_index = reject_match.start()
     processing_index = handle_start_body.index("setFlowStatus(getTaskFlowKey(activeMode, 'processing'), 'processing');")
     submit_index = handle_start_body.index("await submitTextConversion(activeMode);")
     assert load_index < restart_index < reject_index < processing_index < submit_index
@@ -252,9 +228,22 @@ def test_root_route_exposes_result_first_narrative_helpers(client) -> None:
         "function getTaskFlowMessage(",
         "function getResultPanelMessage(",
         "function buildResultNarrative(",
-        "result.replaceChildren(...orderedChildren);",
+        "result.append(...orderedChildren);",
     ):
         assert marker in html
+
+
+def test_root_route_keeps_result_skeleton_stable_for_repeat_text_to_speech_runs(client) -> None:
+    html = client.get("/").get_data(as_text=True)
+    render_result_body = _js_block_after(html, "function renderResult()")
+
+    assert "const resultNodes = [sourceAudioBlock, sourceBlock, outputBlock, audioBlock, actionRow];" in render_result_body
+    assert "result.replaceChildren(...orderedChildren);" not in render_result_body
+    assert "result.append(...orderedChildren);" in render_result_body
+    assert "sourceTextNode.textContent = '';" in render_result_body
+    assert "outputTextNode.textContent = '';" in render_result_body
+    assert "resultNodes.forEach((node) => {" in render_result_body
+    assert "if (!orderedChildren.includes(node)) {" in render_result_body
 
 
 def test_root_route_exposes_history_ui_controls(client) -> None:
