@@ -1023,6 +1023,7 @@
     };
     const PI5_RECORD_START_TIMEOUT_MS = 4000;
     const PI5_STATE_TIMEOUT_MS = 1500;
+    const PI5_PLAYBACK_RESTART_TIMEOUT_MS = 3000;
 
     function getMessage(key) {
       return state.i18n?.[state.locale]?.[key] ?? '';
@@ -1841,13 +1842,14 @@
       const canStartSpeech = Boolean(state.speechInput.sourceType) && !state.isRecording;
       const hasAnyState = Boolean(state.textInput || state.speechInput.sourceType || state.lastResult);
       const pi5Busy = isPi5MediaBusy();
+      const pi5RecordingBusy = state.pi5Media?.active_kind === 'recording';
 
       startButton.textContent = getMessage('text.start');
       resetButton.textContent = getMessage('text.reset');
       saveButton.textContent = isSpeechMode(activeMode) ? getMessage('speech.save_recording') : getMessage('text.save_input');
 
       if (isTextMode(activeMode)) {
-        startButton.disabled = state.isSubmitting || pi5Busy;
+        startButton.disabled = state.isSubmitting || pi5RecordingBusy;
         resetButton.disabled = state.isSubmitting && !hasAnyState;
         saveButton.disabled = false;
         return;
@@ -2315,6 +2317,53 @@
       }
     }
 
+    function waitForDuration(durationMs) {
+      return new Promise((resolve) => {
+        window.setTimeout(resolve, durationMs);
+      });
+    }
+
+    async function requestPi5PlaybackStop() {
+      const { response, payload } = await fetchJson(
+        '/api/pi5/media/stop',
+        {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        },
+        { timeoutMs: PI5_STATE_TIMEOUT_MS },
+      );
+      if (payload.pi5_media) {
+        applyPi5MediaState(payload.pi5_media);
+      }
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      return state.pi5Media;
+    }
+
+    async function waitForPi5PlaybackRestartWindow() {
+      const deadline = Date.now() + PI5_PLAYBACK_RESTART_TIMEOUT_MS;
+      while (Date.now() <= deadline) {
+        const mediaState = await loadPi5MediaState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });
+        if (!mediaState || mediaState.active_kind === 'recording' || !['playing', 'busy'].includes(mediaState.status)) {
+          return mediaState;
+        }
+        await waitForDuration(150);
+      }
+      return state.pi5Media;
+    }
+
+    async function preparePi5TextPlaybackRestart() {
+      if (state.pi5Media?.active_kind === 'recording') {
+        return false;
+      }
+      if (state.pi5Media?.active_kind === 'playback') {
+        await requestPi5PlaybackStop();
+      }
+      const mediaState = await waitForPi5PlaybackRestartWindow();
+      return !Boolean(mediaState && ['playing', 'recording', 'busy'].includes(mediaState.status));
+    }
+
     async function handleStopPlayback() {
       if (state.pi5Media?.active_kind !== 'playback') {
         return;
@@ -2323,18 +2372,7 @@
       state.isSubmitting = true;
       renderShell();
       try {
-        const response = await fetch('/api/pi5/media/stop', {
-          method: 'POST',
-          headers: { Accept: 'application/json' },
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          if (payload.pi5_media) {
-            applyPi5MediaState(payload.pi5_media);
-          }
-          throw new Error(payload.error || `HTTP ${response.status}`);
-        }
-        applyPi5MediaState(payload.pi5_media);
+        await requestPi5PlaybackStop();
         setFlowStatus('speech.pi5_playback_stopped', 'ready');
       } catch (error) {
         setFlowStatus('', 'error', error.message || getMessage('speech.pi5_playback_stop_failed'));
@@ -2596,7 +2634,14 @@
       }
 
       await loadPi5MediaState({ silent: true });
-      if (isPi5MediaBusy()) {
+      if (isTextMode(activeMode)) {
+        const readyForTextRestart = await preparePi5TextPlaybackRestart();
+        if (!readyForTextRestart) {
+          setFlowStatus('speech.pi5_media_busy', 'error');
+          renderShell();
+          return;
+        }
+      } else if (isPi5MediaBusy()) {
         setFlowStatus('speech.pi5_media_busy', 'error');
         renderShell();
         return;

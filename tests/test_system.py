@@ -91,6 +91,8 @@ def test_root_route_exposes_text_mode_controls(client) -> None:
 
     assert '/api/conversions/text' in html
     assert "/api/translate" not in html
+    assert "startButton.disabled = state.isSubmitting || pi5RecordingBusy;" in html
+    assert "const readyForTextRestart = await preparePi5TextPlaybackRestart();" in html
 
 
 def test_root_route_exposes_speech_mode_controls(client) -> None:
@@ -121,7 +123,11 @@ def test_root_route_exposes_speech_mode_controls(client) -> None:
     assert "/api/pi5/media/stop" in html
     assert "const PI5_RECORD_START_TIMEOUT_MS = 4000;" in html
     assert "const PI5_STATE_TIMEOUT_MS = 1500;" in html
+    assert "const PI5_PLAYBACK_RESTART_TIMEOUT_MS = 3000;" in html
     assert "async function fetchJson(path, options = {}, { timeoutMs = 0 } = {})" in html
+    assert "async function requestPi5PlaybackStop()" in html
+    assert "async function waitForPi5PlaybackRestartWindow()" in html
+    assert "async function preparePi5TextPlaybackRestart()" in html
     assert "await loadPi5RecordingState({ silent: true, timeoutMs: PI5_STATE_TIMEOUT_MS });" in html
     assert "if (recoveredState?.active_kind === 'recording') {" in html
     assert "return state.pi5Media;" in html
