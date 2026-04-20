@@ -2,6 +2,7 @@
 
 # 1. Standard library
 from dataclasses import asdict
+import importlib
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -361,3 +362,21 @@ def test_run_pipeline_history_save_failure_does_not_raise(config):
 
     assert "history_id" not in result
     assert result["mode_key"] == "tts_en_en"
+
+
+def test_mt_engine_returns_actionable_error_when_argostranslate_is_missing():
+    from models.mt import MTEngine, TranslationError
+
+    real_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package=None):
+        if name == "argostranslate.translate":
+            raise ModuleNotFoundError("No module named 'argostranslate'")
+        return real_import_module(name, package)
+
+    with patch("models.mt.importlib.import_module", side_effect=_fake_import_module):
+        with pytest.raises(
+            TranslationError,
+            match="translation engine unavailable: argostranslate is not installed",
+        ):
+            MTEngine().translate("hello", "en", "zh")

@@ -1,9 +1,7 @@
 # Standard library
+import importlib
 import logging
 import time
-
-# Third-party
-import argostranslate.translate
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +17,18 @@ class MTEngine:
 
     def __init__(self) -> None:
         self._translations: dict[tuple[str, str], object] = {}
+        self._translate_module = None
+
+    def _get_translate_module(self):
+        if self._translate_module is None:
+            try:
+                self._translate_module = importlib.import_module("argostranslate.translate")
+            except ModuleNotFoundError as exc:
+                logger.error("Argos Translate dependency is missing: error=%s", str(exc))
+                raise TranslationError(
+                    "translation engine unavailable: argostranslate is not installed in the active Python environment"
+                ) from exc
+        return self._translate_module
 
     def _ensure_loaded(self, source_lang: str, target_lang: str) -> None:
         pair = (source_lang, target_lang)
@@ -32,7 +42,7 @@ class MTEngine:
 
         logger.info("加载翻译模型: %s → %s", source_lang, target_lang)
         try:
-            installed = argostranslate.translate.get_installed_languages()
+            installed = self._get_translate_module().get_installed_languages()
             langs = {lang.code: lang for lang in installed}
 
             if source_lang not in langs:

@@ -3,6 +3,7 @@
 # 1. Standard library
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = Path(__file__).parent / "config" / "default.yaml"
+_PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _candidate_local_venv_pythons() -> tuple[Path, ...]:
+    if os.name == "nt":
+        return (
+            _PROJECT_ROOT / ".venv" / "Scripts" / "python.exe",
+            _PROJECT_ROOT / "venv" / "Scripts" / "python.exe",
+        )
+    return (
+        _PROJECT_ROOT / ".venv" / "bin" / "python",
+        _PROJECT_ROOT / "venv" / "bin" / "python",
+    )
+
+
+def _running_inside_virtualenv() -> bool:
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+
+def _maybe_reexec_with_local_venv() -> None:
+    if _running_inside_virtualenv():
+        return
+
+    current_executable = Path(sys.executable).resolve()
+    for candidate in _candidate_local_venv_pythons():
+        if not candidate.exists():
+            continue
+
+        resolved_candidate = candidate.resolve()
+        if resolved_candidate == current_executable:
+            return
+
+        logger.info(
+            "restarting with local virtual environment interpreter: current=%s, target=%s",
+            current_executable,
+            resolved_candidate,
+        )
+        os.execv(str(resolved_candidate), [str(resolved_candidate), str(_PROJECT_ROOT / "main.py"), *sys.argv[1:]])
+        return
 
 
 def _load_config() -> dict:
@@ -60,4 +100,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    _maybe_reexec_with_local_venv()
     main()

@@ -233,6 +233,25 @@ def test_root_route_preserves_current_speech_direction_when_reusing_recording(cl
     assert preserve_index < fallback_index
 
 
+@pytest.mark.parametrize(
+    ("mode_key", "group_key"),
+    [
+        ("asr_mt_zh_en", "cross_speech_to_text"),
+        ("asr_mt_en_zh", "cross_speech_to_text"),
+        ("asr_mt_tts_zh_en", "cross_speech_to_speech"),
+        ("asr_mt_tts_en_zh", "cross_speech_to_speech"),
+    ],
+)
+def test_root_route_locks_cross_speech_recording_reuse_modes(client, mode_key: str, group_key: str) -> None:
+    html = client.get("/").get_data(as_text=True)
+    helper_body = _js_block_after(html, "function applyRecordingReuse(recording, mode)")
+
+    assert f"'{mode_key}'" in html
+    assert "state.activeGroupKey = mode.group_key;" in helper_body
+    assert "state.activeModeKey = mode.mode_key;" in helper_body
+    assert f"state.activeGroupKey = '{group_key}';" not in helper_body
+
+
 def test_root_route_exposes_result_first_narrative_helpers(client) -> None:
     resp = client.get("/")
     html = resp.get_data(as_text=True)
@@ -368,6 +387,34 @@ def test_main_server_flag_remains_explicitly_supported(mock_config) -> None:
 
     run_server.assert_called_once_with(mock_config)
     run_cli.assert_not_called()
+
+
+def test_maybe_reexec_with_local_venv_uses_repo_interpreter_when_not_already_in_venv() -> None:
+    candidate = (main._PROJECT_ROOT / "venv" / "Scripts" / "python.exe").resolve()
+
+    with (
+        patch("main._running_inside_virtualenv", return_value=False),
+        patch("main._candidate_local_venv_pythons", return_value=(candidate,)),
+        patch("main.os.execv") as mock_execv,
+        patch.object(sys, "executable", "C:/Python/Python313/python.exe"),
+        patch.object(sys, "argv", ["main.py", "--server"]),
+    ):
+        main._maybe_reexec_with_local_venv()
+
+    mock_execv.assert_called_once_with(
+        str(candidate),
+        [str(candidate), str(main._PROJECT_ROOT / "main.py"), "--server"],
+    )
+
+
+def test_maybe_reexec_with_local_venv_skips_when_already_running_inside_venv() -> None:
+    with (
+        patch("main._running_inside_virtualenv", return_value=True),
+        patch("main.os.execv") as mock_execv,
+    ):
+        main._maybe_reexec_with_local_venv()
+
+    mock_execv.assert_not_called()
 
 
 def test_test_suite_does_not_depend_on_legacy_translate_endpoint_or_numeric_mode_key() -> None:
