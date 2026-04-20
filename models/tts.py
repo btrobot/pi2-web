@@ -1,57 +1,34 @@
-"""TTS 语音合成引擎封装 — piper-tts (fallback: espeak-ng)"""
+"""TTS engine wrapper using Piper first and espeak-ng as a fallback."""
 
-# 1. Standard library
+from __future__ import annotations
+
 import logging
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class TTSError(Exception):
-    """TTS 合成失败时抛出"""
+    """Raised when text-to-speech synthesis or playback fails."""
 
 
 class TTSEngine:
-    """封装 piper-tts CLI，按需加载模型，支持 espeak-ng fallback。
-
-    输出规格: 16kHz, 16-bit, Mono WAV
-    """
+    """Synthesize zh/en speech to WAV output files."""
 
     def __init__(self, zh_model_path: str, en_model_path: str) -> None:
-        """初始化引擎，不立即加载模型。
-
-        Args:
-            zh_model_path: 中文 piper .onnx 模型目录或文件路径
-            en_model_path: 英文 piper .onnx 模型目录或文件路径
-        """
         self._zh_model_path = zh_model_path
         self._en_model_path = en_model_path
-        self._piper_available: Optional[bool] = None  # lazy-checked
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        self._piper_available: bool | None = None
+        self._piper_command: str | None = None
 
     def synthesize(self, text: str, lang: str, output_path: str) -> str:
-        """合成语音并保存为 WAV 文件。
-
-        Args:
-            text: 待合成文本
-            lang: 语言代码，"zh" 或 "en"
-            output_path: 输出 WAV 文件路径
-
-        Returns:
-            保存成功的文件路径（与 output_path 相同）
-
-        Raises:
-            TTSError: 合成失败
-            ValueError: lang 不支持
-        """
+        """Synthesize speech to a WAV file."""
         model_path = self._resolve_model(lang)
         start = time.monotonic()
 
@@ -59,28 +36,20 @@ class TTSEngine:
             if self._is_piper_available():
                 self._run_piper(text, model_path, output_path)
             else:
-                logger.warning("piper CLI 不可用，使用 espeak-ng fallback")
+                logger.warning("piper CLI is unavailable; falling back to espeak-ng")
                 self._run_espeak(text, lang, output_path)
         except TTSError:
             raise
-        except Exception as e:
-            logger.error("TTS 合成失败: lang=%s, error=%s", lang, str(e))
-            raise TTSError(f"合成失败: {e}") from e
+        except Exception as exc:
+            logger.error("TTS synthesis failed: lang=%s, error=%s", lang, str(exc))
+            raise TTSError(f"synthesis failed: {exc}") from exc
 
         elapsed = time.monotonic() - start
-        logger.info("TTS 合成完成: lang=%s, duration=%.2fs, output=%s", lang, elapsed, output_path)
+        logger.info("TTS synthesis complete: lang=%s, duration=%.2fs, output=%s", lang, elapsed, output_path)
         return output_path
 
     def speak(self, text: str, lang: str) -> None:
-        """合成语音并通过 aplay 直接播放。
-
-        Args:
-            text: 待合成文本
-            lang: 语言代码，"zh" 或 "en"
-
-        Raises:
-            TTSError: 合成或播放失败
-        """
+        """Synthesize speech and play it through aplay."""
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
 
@@ -90,38 +59,49 @@ class TTSEngine:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
     def _resolve_model(self, lang: str) -> str:
-        """返回对应语言的模型路径，并验证其存在。"""
         if lang == "zh":
             raw = self._zh_model_path
         elif lang == "en":
             raw = self._en_model_path
         else:
-            raise ValueError(f"不支持的语言: {lang!r}，仅支持 'zh' / 'en'")
+            raise ValueError(f"unsupported language: {lang!r}; only 'zh' and 'en' are supported")
 
-        # 如果路径是目录，查找其中第一个 .onnx 文件
-        p = Path(raw)
-        if p.is_dir():
-            onnx_files = list(p.glob("*.onnx"))
+        path = Path(raw)
+        if path.is_dir():
+            onnx_files = list(path.glob("*.onnx"))
             if not onnx_files:
-                raise TTSError(f"模型目录中未找到 .onnx 文件: {raw}")
+                raise TTSError(f"no .onnx model found in directory: {raw}")
             return str(onnx_files[0])
 
         return raw
 
+    def _resolve_piper_command(self) -> str | None:
+        """Resolve piper from the active venv/bin before falling back to PATH."""
+        if self._piper_command is not None:
+            return self._piper_command
+
+        executable_name = "piper.exe" if os.name == "nt" else "piper"
+        interpreter_dir = Path(sys.executable).resolve().parent
+        local_candidate = interpreter_dir / executable_name
+        if local_candidate.exists():
+            self._piper_command = str(local_candidate)
+            return self._piper_command
+
+        self._piper_command = shutil.which("piper")
+        return self._piper_command
+
     def _is_piper_available(self) -> bool:
-        """检查 piper CLI 是否可用（结果缓存）。"""
         if self._piper_available is None:
-            self._piper_available = shutil.which("piper") is not None
+            self._piper_available = self._resolve_piper_command() is not None
         return self._piper_available
 
     def _run_piper(self, text: str, model_path: str, output_path: str) -> None:
-        """调用 piper CLI 合成语音。"""
-        cmd = ["piper", "--model", model_path, "--output_file", output_path]
+        piper_command = self._resolve_piper_command()
+        if piper_command is None:
+            raise TTSError("piper command not found")
+
+        cmd = [piper_command, "--model", model_path, "--output_file", output_path]
         try:
             result = subprocess.run(
                 cmd,
@@ -130,17 +110,16 @@ class TTSEngine:
                 text=True,
                 timeout=60,
             )
-        except subprocess.TimeoutExpired as e:
-            raise TTSError("piper 合成超时 (60s)") from e
-        except FileNotFoundError as e:
-            raise TTSError("piper 命令未找到") from e
+        except subprocess.TimeoutExpired as exc:
+            raise TTSError("piper synthesis timed out (60s)") from exc
+        except FileNotFoundError as exc:
+            raise TTSError("piper command not found") from exc
 
         if result.returncode != 0:
-            logger.error("piper 返回非零: code=%d, stderr=%s", result.returncode, result.stderr)
-            raise TTSError(f"piper 退出码 {result.returncode}: {result.stderr.strip()}")
+            logger.error("piper returned non-zero: code=%d, stderr=%s", result.returncode, result.stderr)
+            raise TTSError(f"piper exited with code {result.returncode}: {result.stderr.strip()}")
 
     def _run_espeak(self, text: str, lang: str, output_path: str) -> None:
-        """调用 espeak-ng 合成语音（fallback）。"""
         espeak_lang = "zh" if lang == "zh" else "en"
         cmd = ["espeak-ng", "-v", espeak_lang, "-w", output_path, text]
         try:
@@ -150,17 +129,16 @@ class TTSEngine:
                 text=True,
                 timeout=60,
             )
-        except subprocess.TimeoutExpired as e:
-            raise TTSError("espeak-ng 合成超时 (60s)") from e
-        except FileNotFoundError as e:
-            raise TTSError("espeak-ng 命令未找到") from e
+        except subprocess.TimeoutExpired as exc:
+            raise TTSError("espeak-ng synthesis timed out (60s)") from exc
+        except FileNotFoundError as exc:
+            raise TTSError("espeak-ng command not found") from exc
 
         if result.returncode != 0:
-            logger.error("espeak-ng 返回非零: code=%d, stderr=%s", result.returncode, result.stderr)
-            raise TTSError(f"espeak-ng 退出码 {result.returncode}: {result.stderr.strip()}")
+            logger.error("espeak-ng returned non-zero: code=%d, stderr=%s", result.returncode, result.stderr)
+            raise TTSError(f"espeak-ng exited with code {result.returncode}: {result.stderr.strip()}")
 
     def _play(self, wav_path: str) -> None:
-        """通过 aplay 播放 WAV 文件。"""
         cmd = ["aplay", wav_path]
         try:
             result = subprocess.run(
@@ -169,11 +147,11 @@ class TTSEngine:
                 text=True,
                 timeout=120,
             )
-        except subprocess.TimeoutExpired as e:
-            raise TTSError("aplay 播放超时 (120s)") from e
-        except FileNotFoundError as e:
-            raise TTSError("aplay 命令未找到") from e
+        except subprocess.TimeoutExpired as exc:
+            raise TTSError("aplay playback timed out (120s)") from exc
+        except FileNotFoundError as exc:
+            raise TTSError("aplay command not found") from exc
 
         if result.returncode != 0:
-            logger.error("aplay 返回非零: code=%d, stderr=%s", result.returncode, result.stderr)
-            raise TTSError(f"aplay 退出码 {result.returncode}: {result.stderr.strip()}")
+            logger.error("aplay returned non-zero: code=%d, stderr=%s", result.returncode, result.stderr)
+            raise TTSError(f"aplay exited with code {result.returncode}: {result.stderr.strip()}")
