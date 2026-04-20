@@ -675,6 +675,7 @@ def test_index_recordings_view_contract_exposes_start_finish_and_back_controls(c
     assert 'id="recordings-back-button"' in html
     assert 'id="mode-picker-block"' in html
     assert 'id="input-actions"' in html
+    assert 'id="speech-input-label"' in html
     assert 'id="speech-recordings-label"' in html
     assert re.search(
         r"function renderViewVisibility\(\)\s*\{.*?"
@@ -691,9 +692,13 @@ def test_index_recordings_view_contract_exposes_start_finish_and_back_controls(c
         r"function renderInputPanel\(\)\s*\{.*?"
         r"const isRecordingsView = state\.activeKind === 'recordings';.*?"
         r"const isSpeechSurface = isSpeech \|\| isRecordingsView;.*?"
+        r"const inputPanelTitle = document\.getElementById\('input-panel-title'\);.*?"
+        r"const inputPanelCaption = document\.getElementById\('input-panel-caption'\);.*?"
         r"modePickerBlock\.hidden = state\.activeKind !== 'group';.*?"
         r"inputActions\.hidden = isRecordingsView;.*?"
         r"speechSection\.hidden = !isSpeechSurface;.*?"
+        r"inputPanelTitle\.textContent = getMessage\(isRecordingsView \? 'recordings\.panel_title' : 'panel\.input'\);.*?"
+        r"inputPanelCaption\.textContent = getMessage\(isRecordingsView \? 'recordings\.panel_caption' : 'panel\.input_caption'\);.*?"
         r"speechRecordButton\.textContent = isRecordingsView \? getMessage\('recordings\.start'\) : getMessage\('speech\.record_start'\);.*?"
         r"speechStopButton\.textContent = isRecordingsView \? getMessage\('recordings\.finish'\) : getMessage\('speech\.record_stop'\);.*?"
         r"speechRecordButton\.hidden = isRecordingsView \? pi5RecordingActive : false;.*?"
@@ -735,6 +740,8 @@ def test_index_recordings_view_contract_uses_recording_menu_copy_instead_of_reus
     input_start = script.index("function renderInputPanel() {")
     input_end = script.index("\n\n    function renderShell()", input_start)
     input_body = script[input_start:input_end]
+    assert "const speechInputLabel = document.getElementById('speech-input-label');" in input_body
+    assert "speechInputLabel.textContent = getMessage(isRecordingsView ? 'recordings.controls_label' : 'speech.input_label');" in input_body
     assert "const recordingsLabel = document.getElementById('speech-recordings-label');" in input_body
     assert "recordingsLabel.textContent = getMessage(isRecordingsView ? 'recordings.recent_label' : 'speech.recordings_label');" in input_body
 
@@ -1026,6 +1033,9 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "recordings.saved",
         "recordings.empty",
         "recordings.recent_label",
+        "recordings.panel_title",
+        "recordings.panel_caption",
+        "recordings.controls_label",
     }
 
     assert set(data["i18n"].keys()) == {"zh-CN", "en-US"}
@@ -1075,6 +1085,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["recordings.back_to_main"] == "返回主菜单"
     assert zh["recordings.empty"] == '当前还没有已保存的“录制音频”。'
     assert zh["recordings.recent_label"] == "最近录音"
+    assert zh["recordings.panel_title"] == "录音菜单"
+    assert zh["recordings.controls_label"] == "录音操作"
     assert zh["speech.input_hint"] == "浏览器只负责控制；请在 Pi5 麦克风旁开始/停止录音，或复用已保存的 Pi5 录音。"
     assert zh["help.speech_desc"] == "在语音输入模式中，浏览器只负责控制；请在 Pi5 麦克风旁录音、复用录音库中的 Pi5 录音，并在 Pi5 侧收听播放。"
     assert zh["speech.pi5_media_label"] == "Pi5 设备状态"
@@ -1100,6 +1112,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert en["recordings.back_to_main"] == "Back to main menu"
     assert en["recordings.empty"] == "No saved recordings are available in the recordings folder yet."
     assert en["recordings.recent_label"] == "Recent recordings"
+    assert en["recordings.panel_title"] == "Recording menu"
+    assert en["recordings.controls_label"] == "Recording controls"
     assert en["panel.output"] == "Results"
     assert en["speech.use_recording"] == "Use this recording"
     assert en["task.speech_to_text"] == "Speech→Text"

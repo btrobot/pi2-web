@@ -833,7 +833,7 @@
               </div>
 
               <div id="speech-input-section" class="panel-stack" hidden>
-                <p class="field-label" data-i18n="speech.input_label"></p>
+                <p id="speech-input-label" class="field-label" data-i18n="speech.input_label"></p>
                 <div class="button-row">
                   <button id="speech-record-button" class="secondary-button" type="button" data-i18n="speech.record_start"></button>
                   <button id="speech-stop-button" class="secondary-button" type="button" data-i18n="speech.record_stop"></button>
@@ -1831,6 +1831,8 @@
       const isSpeech = state.activeKind === 'group' && isSpeechMode(activeMode);
       const isRecordingsView = state.activeKind === 'recordings';
       const isSpeechSurface = isSpeech || isRecordingsView;
+      const inputPanelTitle = document.getElementById('input-panel-title');
+      const inputPanelCaption = document.getElementById('input-panel-caption');
       const textSection = document.getElementById('text-input-section');
       const speechSection = document.getElementById('speech-input-section');
       const modePickerBlock = document.getElementById('mode-picker-block');
@@ -1839,6 +1841,7 @@
       const textUploadInput = document.getElementById('text-upload-input');
       const textUploadLabel = document.getElementById('text-upload-label');
       const textClearButton = document.getElementById('text-clear-button');
+      const speechInputLabel = document.getElementById('speech-input-label');
       const speechRecordButton = document.getElementById('speech-record-button');
       const speechStopButton = document.getElementById('speech-stop-button');
       const speechClearButton = document.getElementById('speech-clear-button');
@@ -1858,6 +1861,8 @@
       textSection.hidden = !isText;
       speechSection.hidden = !isSpeechSurface;
       pi5MediaPanel.hidden = !(isRecordingsView || (state.activeKind === 'group' && activeMode));
+      inputPanelTitle.textContent = getMessage(isRecordingsView ? 'recordings.panel_title' : 'panel.input');
+      inputPanelCaption.textContent = getMessage(isRecordingsView ? 'recordings.panel_caption' : 'panel.input_caption');
 
       textInput.value = state.textInput;
       textInput.disabled = !isText;
@@ -1876,6 +1881,7 @@
       speechClearButton.disabled = !isSpeech || pi5RecordingActive || state.isSubmitting;
       recordingsBackButton.hidden = !isRecordingsView;
       recordingsBackButton.disabled = state.isSubmitting || pi5RecordingActive;
+      speechInputLabel.textContent = getMessage(isRecordingsView ? 'recordings.controls_label' : 'speech.input_label');
       recordingsLabel.textContent = getMessage(isRecordingsView ? 'recordings.recent_label' : 'speech.recordings_label');
 
       speechHint.textContent = isRecordingsView ? getMessage('recordings.hint') : getMessage('speech.input_hint');
