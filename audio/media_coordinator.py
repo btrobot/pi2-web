@@ -7,6 +7,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 _STOP_TIMEOUT_SECONDS = 2
 _RECORD_JOIN_TIMEOUT_SECONDS = 5
+_PLAYBACK_SETTLE_SECONDS = 0.35
 
 
 class MediaCoordinatorError(Exception):
@@ -57,6 +59,7 @@ class Pi5MediaCoordinator:
         self._recording_result_path: str | None = None
         self._recording_error: str | None = None
         self._recording_token = 0
+        self._playback_settle_until = 0.0
 
     def get_state(self) -> dict[str, Any]:
         with self._lock:
@@ -106,6 +109,7 @@ class Pi5MediaCoordinator:
                 "pid": proc.pid,
             }
             self._playback_error = None
+            self._playback_settle_until = 0.0
 
         watcher = threading.Thread(
             target=self._watch_playback,
@@ -128,6 +132,7 @@ class Pi5MediaCoordinator:
             self._playback_proc = None
             self._playback_info = None
             self._playback_error = None
+            self._arm_playback_settle_locked()
 
         self._terminate_process(proc)
         return self.get_state()
@@ -249,6 +254,7 @@ class Pi5MediaCoordinator:
 
             self._playback_proc = None
             self._playback_info = None
+            self._arm_playback_settle_locked()
             if return_code != 0:
                 self._playback_error = f"Pi5 playback exited with code {return_code}"
                 logger.error("Pi5 playback failed: returncode=%s", return_code)
@@ -266,6 +272,7 @@ class Pi5MediaCoordinator:
 
         self._playback_proc = None
         self._playback_info = None
+        self._arm_playback_settle_locked()
         if return_code != 0:
             self._playback_error = f"Pi5 playback exited with code {return_code}"
         else:
@@ -273,6 +280,7 @@ class Pi5MediaCoordinator:
 
     def _snapshot_locked(self) -> dict[str, Any]:
         recording_thread_alive = self._recording_thread is not None and self._recording_thread.is_alive()
+        playback_settling = self._is_playback_settling_locked()
         recording_info = None
         if self._recording_info is not None:
             recording_info = {
@@ -288,6 +296,9 @@ class Pi5MediaCoordinator:
         elif self._playback_proc is not None:
             status = "playing"
             active_kind = "playback"
+        elif playback_settling:
+            status = "busy"
+            active_kind = None
         elif self._recording_error or self._playback_error:
             status = "error"
             active_kind = None
@@ -323,7 +334,23 @@ class Pi5MediaCoordinator:
             if requested_action == "recording":
                 return "Pi5 media is busy with playback"
             return "Pi5 media is busy with playback"
+        if self._is_playback_settling_locked():
+            return "Pi5 media is busy with playback"
         return None
+
+    def _is_playback_settling_locked(self) -> bool:
+        if self._playback_settle_until <= 0:
+            return False
+        if time.monotonic() < self._playback_settle_until:
+            return True
+        self._playback_settle_until = 0.0
+        return False
+
+    def _arm_playback_settle_locked(self) -> None:
+        self._playback_settle_until = max(
+            self._playback_settle_until,
+            time.monotonic() + _PLAYBACK_SETTLE_SECONDS,
+        )
 
     def _create_temp_recording_path(self) -> str:
         with tempfile.NamedTemporaryFile(

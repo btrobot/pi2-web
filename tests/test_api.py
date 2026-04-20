@@ -111,6 +111,26 @@ class _StubPi5MediaCoordinator:
         return dict(self.recording_result)
 
 
+class _FakePlaybackProcess:
+    def __init__(self) -> None:
+        self.pid = 4321
+        self.returncode: int | None = None
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def kill(self) -> None:
+        self.returncode = -9
+
+
 @pytest.fixture
 def app(mock_config):
     """Create Flask test app with mock config."""
@@ -177,6 +197,75 @@ def test_real_pi5_media_coordinator_persists_recording_on_stop(mock_config, tmp_
         "recording": None,
         "error": None,
     }
+
+
+def test_real_pi5_media_coordinator_blocks_immediate_restart_after_stop(mock_config, tmp_audio_file):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+    playback_proc = _FakePlaybackProcess()
+    clock = {"now": 100.0}
+
+    with (
+        patch("audio.media_coordinator.play_wav", return_value=playback_proc),
+        patch("audio.media_coordinator.time.monotonic", side_effect=lambda: clock["now"]),
+        patch.object(Pi5MediaCoordinator, "_watch_playback", autospec=True, return_value=None),
+    ):
+        start_state = coordinator.start_playback(
+            str(tmp_audio_file),
+            mode_key="tts_zh_zh",
+            history_id=1,
+            audio_url="/api/history/1/artifacts/output_audio",
+        )
+        stop_state = coordinator.stop_playback()
+
+        assert start_state["status"] == "playing"
+        assert stop_state["status"] == "busy"
+        with pytest.raises(MediaBusyError, match="Pi5 media is busy with playback"):
+            coordinator.start_recording()
+
+        clock["now"] = 100.36
+        assert coordinator.get_state() == {
+            "status": "idle",
+            "device": "plughw:2,0",
+            "active_kind": None,
+            "playback": None,
+            "recording": None,
+            "error": None,
+        }
+
+
+def test_real_pi5_media_coordinator_blocks_immediate_restart_after_playback_finishes(mock_config, tmp_audio_file):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+    playback_proc = _FakePlaybackProcess()
+    clock = {"now": 200.0}
+
+    with (
+        patch("audio.media_coordinator.play_wav", return_value=playback_proc),
+        patch("audio.media_coordinator.time.monotonic", side_effect=lambda: clock["now"]),
+        patch.object(Pi5MediaCoordinator, "_watch_playback", autospec=True, return_value=None),
+    ):
+        start_state = coordinator.start_playback(
+            str(tmp_audio_file),
+            mode_key="tts_en_en",
+            history_id=2,
+            audio_url="/api/history/2/artifacts/output_audio",
+        )
+        playback_proc.returncode = 0
+        settled_state = coordinator.get_state()
+
+        assert start_state["status"] == "playing"
+        assert settled_state["status"] == "busy"
+        with pytest.raises(MediaBusyError, match="Pi5 media is busy with playback"):
+            coordinator.start_recording()
+
+        clock["now"] = 200.36
+        assert coordinator.get_state() == {
+            "status": "idle",
+            "device": "plughw:2,0",
+            "active_kind": None,
+            "playback": None,
+            "recording": None,
+            "error": None,
+        }
 
 
 def test_pi5_media_state_and_stop_routes_return_stable_payload(client, app):

@@ -120,6 +120,9 @@ def test_root_route_exposes_speech_mode_controls(client) -> None:
     assert "/api/pi5/media/state" in html
     assert "/api/pi5/media/stop" in html
     assert "loadPi5MediaState({ silent: true });" in html
+    assert "function isPi5MediaBusy()" in html
+    assert "await Promise.all([loadHistoryData(), loadPi5MediaState()]);" in html
+    assert "if (isPi5MediaBusy()) {" in html
     assert "navigator.mediaDevices?.getUserMedia" not in html
     assert 'id="speech-upload-input"' not in html
     assert 'id="speech-preview-player"' not in html

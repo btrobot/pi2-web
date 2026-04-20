@@ -1389,6 +1389,10 @@
       syncPi5MediaPolling();
     }
 
+    function isPi5MediaBusy() {
+      return Boolean(state.pi5Media && ['playing', 'recording', 'busy'].includes(state.pi5Media.status));
+    }
+
     function renderViewVisibility() {
       const shellGrid = document.getElementById('app-shell-grid');
       const historySection = document.getElementById('history-full-section');
@@ -1798,20 +1802,21 @@
       const saveButton = document.getElementById('text-save-button');
       const canStartSpeech = Boolean(state.speechInput.sourceType) && !state.isRecording;
       const hasAnyState = Boolean(state.textInput || state.speechInput.sourceType || state.lastResult);
+      const pi5Busy = isPi5MediaBusy();
 
       startButton.textContent = getMessage('text.start');
       resetButton.textContent = getMessage('text.reset');
       saveButton.textContent = isSpeechMode(activeMode) ? getMessage('speech.save_recording') : getMessage('text.save_input');
 
       if (isTextMode(activeMode)) {
-        startButton.disabled = state.isSubmitting;
+        startButton.disabled = state.isSubmitting || pi5Busy;
         resetButton.disabled = state.isSubmitting && !hasAnyState;
         saveButton.disabled = false;
         return;
       }
 
       if (isSpeechMode(activeMode)) {
-        startButton.disabled = state.isSubmitting || !canStartSpeech;
+        startButton.disabled = state.isSubmitting || !canStartSpeech || pi5Busy;
         resetButton.disabled = state.isSubmitting || state.isRecording;
         saveButton.disabled = state.isSubmitting || state.isRecording || state.speechInput.recordingId === null;
         return;
@@ -2502,7 +2507,7 @@
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
       state.lastResult = { modeKey: activeMode.mode_key, payload };
-      await loadHistoryData();
+      await Promise.all([loadHistoryData(), loadPi5MediaState()]);
       setFlowStatus(getTaskFlowKey(activeMode, 'ready'), 'ready');
     }
 
@@ -2539,6 +2544,13 @@
       const activeMode = getActiveMode();
       if (!activeMode || state.activeKind !== 'group') {
         setFlowStatus('text.non_text_mode_pending', 'info');
+        return;
+      }
+
+      await loadPi5MediaState({ silent: true });
+      if (isPi5MediaBusy()) {
+        setFlowStatus('speech.pi5_media_busy', 'error');
+        renderShell();
         return;
       }
 
