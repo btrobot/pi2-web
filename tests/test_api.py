@@ -675,6 +675,7 @@ def test_index_recordings_view_contract_exposes_start_finish_and_back_controls(c
     assert 'id="recordings-back-button"' in html
     assert 'id="mode-picker-block"' in html
     assert 'id="input-actions"' in html
+    assert 'id="speech-recordings-label"' in html
     assert re.search(
         r"function renderViewVisibility\(\)\s*\{.*?"
         r"const outputPanel = document\.getElementById\('app-output-panel'\);.*?"
@@ -695,6 +696,8 @@ def test_index_recordings_view_contract_exposes_start_finish_and_back_controls(c
         r"speechSection\.hidden = !isSpeechSurface;.*?"
         r"speechRecordButton\.textContent = isRecordingsView \? getMessage\('recordings\.start'\) : getMessage\('speech\.record_start'\);.*?"
         r"speechStopButton\.textContent = isRecordingsView \? getMessage\('recordings\.finish'\) : getMessage\('speech\.record_stop'\);.*?"
+        r"speechRecordButton\.hidden = isRecordingsView \? pi5RecordingActive : false;.*?"
+        r"speechStopButton\.hidden = isRecordingsView \? !pi5RecordingActive : false;.*?"
         r"recordingsBackButton\.hidden = !isRecordingsView;",
         script,
         flags=re.S,
@@ -718,6 +721,22 @@ def test_index_recordings_view_handlers_allow_recording_without_active_conversio
     assert "if (recordingsView) {" in stop_body
     assert "clearSpeechInputSource();" in stop_body
     assert "setFlowStatus('recordings.saved', 'ready'" in stop_body
+
+
+def test_index_recordings_view_contract_uses_recording_menu_copy_instead_of_reuse_copy(client):
+    script = _get_index_script(_get_index_html(client))
+
+    recordings_start = script.index("function renderRecordingsList() {")
+    recordings_end = script.index("\n\n    function getRecordingsViewStatus()", recordings_start)
+    recordings_body = script[recordings_start:recordings_end]
+    assert "const isRecordingsView = state.activeKind === 'recordings';" in recordings_body
+    assert "getMessage(isRecordingsView ? 'recordings.empty' : 'speech.no_recordings')" in recordings_body
+
+    input_start = script.index("function renderInputPanel() {")
+    input_end = script.index("\n\n    function renderShell()", input_start)
+    input_body = script[input_start:input_end]
+    assert "const recordingsLabel = document.getElementById('speech-recordings-label');" in input_body
+    assert "recordingsLabel.textContent = getMessage(isRecordingsView ? 'recordings.recent_label' : 'speech.recordings_label');" in input_body
 
 
 @pytest.mark.parametrize(
@@ -1005,6 +1024,8 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "recordings.idle",
         "recordings.active",
         "recordings.saved",
+        "recordings.empty",
+        "recordings.recent_label",
     }
 
     assert set(data["i18n"].keys()) == {"zh-CN", "en-US"}
@@ -1052,6 +1073,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["speech.record_start"] == "开始录音"
     assert zh["recordings.finish"] == "输入完毕"
     assert zh["recordings.back_to_main"] == "返回主菜单"
+    assert zh["recordings.empty"] == '当前还没有已保存的“录制音频”。'
+    assert zh["recordings.recent_label"] == "最近录音"
     assert zh["speech.input_hint"] == "浏览器只负责控制；请在 Pi5 麦克风旁开始/停止录音，或复用已保存的 Pi5 录音。"
     assert zh["help.speech_desc"] == "在语音输入模式中，浏览器只负责控制；请在 Pi5 麦克风旁录音、复用录音库中的 Pi5 录音，并在 Pi5 侧收听播放。"
     assert zh["speech.pi5_media_label"] == "Pi5 设备状态"
@@ -1075,6 +1098,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert en["panel.input"] == "Input & actions"
     assert en["recordings.finish"] == "Finish input"
     assert en["recordings.back_to_main"] == "Back to main menu"
+    assert en["recordings.empty"] == "No saved recordings are available in the recordings folder yet."
+    assert en["recordings.recent_label"] == "Recent recordings"
     assert en["panel.output"] == "Results"
     assert en["speech.use_recording"] == "Use this recording"
     assert en["task.speech_to_text"] == "Speech→Text"

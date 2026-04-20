@@ -844,7 +844,7 @@
                 <p id="speech-source-status" class="status-note"></p>
                 <div class="section-divider"></div>
                 <div class="section-row">
-                  <p class="field-label" data-i18n="speech.recordings_label"></p>
+                  <p id="speech-recordings-label" class="field-label" data-i18n="speech.recordings_label"></p>
                   <span id="speech-recordings-count" class="meta-pill">0</span>
                 </div>
                 <div id="speech-recordings-list" class="recording-list"></div>
@@ -1760,6 +1760,7 @@
       const count = document.getElementById('speech-recordings-count');
       list.innerHTML = '';
       count.textContent = `${state.recordings.length} / ${state.constraints?.max_recordings ?? 5}`;
+      const isRecordingsView = state.activeKind === 'recordings';
 
       if (state.recordingsState === 'loading') {
         list.innerHTML = `<p class="recording-empty">${getMessage('speech.recordings_loading')}</p>`;
@@ -1772,12 +1773,11 @@
       }
 
       if (!state.recordings.length) {
-        list.innerHTML = `<p class="recording-empty">${getMessage('speech.no_recordings')}</p>`;
+        list.innerHTML = `<p class="recording-empty">${getMessage(isRecordingsView ? 'recordings.empty' : 'speech.no_recordings')}</p>`;
         return;
       }
 
       state.recordings.forEach((recording) => {
-        const isRecordingsView = state.activeKind === 'recordings';
         const card = document.createElement('article');
         card.className = 'recording-card';
         card.innerHTML = `
@@ -1843,6 +1843,7 @@
       const speechStopButton = document.getElementById('speech-stop-button');
       const speechClearButton = document.getElementById('speech-clear-button');
       const recordingsBackButton = document.getElementById('recordings-back-button');
+      const recordingsLabel = document.getElementById('speech-recordings-label');
       const speechHint = document.getElementById('speech-input-hint');
       const speechSourceStatus = document.getElementById('speech-source-status');
       const pi5MediaPanel = document.getElementById('pi5-media-panel');
@@ -1867,12 +1868,15 @@
       const pi5RecordingActive = isPi5RecordingActive();
       speechRecordButton.textContent = isRecordingsView ? getMessage('recordings.start') : getMessage('speech.record_start');
       speechStopButton.textContent = isRecordingsView ? getMessage('recordings.finish') : getMessage('speech.record_stop');
+      speechRecordButton.hidden = isRecordingsView ? pi5RecordingActive : false;
+      speechStopButton.hidden = isRecordingsView ? !pi5RecordingActive : false;
       speechRecordButton.disabled = !isSpeechSurface || pi5RecordingActive || state.isSubmitting;
       speechStopButton.disabled = !isSpeechSurface || !pi5RecordingActive || state.isSubmitting;
       speechClearButton.hidden = isRecordingsView;
       speechClearButton.disabled = !isSpeech || pi5RecordingActive || state.isSubmitting;
       recordingsBackButton.hidden = !isRecordingsView;
       recordingsBackButton.disabled = state.isSubmitting || pi5RecordingActive;
+      recordingsLabel.textContent = getMessage(isRecordingsView ? 'recordings.recent_label' : 'speech.recordings_label');
 
       speechHint.textContent = isRecordingsView ? getMessage('recordings.hint') : getMessage('speech.input_hint');
       speechSourceStatus.textContent = isRecordingsView ? getRecordingsViewStatus() : describeSpeechSelection();
