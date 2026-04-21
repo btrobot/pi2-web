@@ -2260,3 +2260,63 @@ def test_get_recording_audio_404_when_not_found(client):
     resp = client.get("/api/recordings/999/audio")
 
     assert resp.status_code == 404
+
+
+def test_get_recording_audio_serves_files_when_storage_config_uses_relative_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_audio_file: Path,
+):
+    monkeypatch.chdir(tmp_path)
+    relative_config = {
+        "audio": {
+            "device": "plughw:2,0",
+            "sample_rate": 16000,
+            "bit_depth": 16,
+            "channels": 1,
+            "max_record_duration": 180,
+        },
+        "models": {
+            "asr": {
+                "zh_model_path": "models/data/vosk-model-small-cn-0.22",
+                "en_model_path": "models/data/vosk-model-small-en-us-0.15",
+            },
+            "mt": {
+                "package_path": "models/data/argos",
+            },
+            "tts": {
+                "zh_model_path": "models/data/piper/zh_CN-huayan-medium.onnx",
+                "en_model_path": "models/data/piper/en_US-lessac-medium.onnx",
+            },
+        },
+        "storage": {
+            "history_dir": "data/history",
+            "recordings_dir": "data/recordings",
+            "max_history": 5,
+            "max_recordings": 5,
+        },
+        "api": {
+            "host": "0.0.0.0",
+            "port": 5000,
+        },
+        "logging": {
+            "level": "INFO",
+        },
+    }
+
+    with patch("api.app._run_startup_checks", return_value={"mt": {"ok": True, "issues": [], "package_dir": "models/data/argos"}}):
+        flask_app = create_app(relative_config)
+    flask_app.config["TESTING"] = True
+    flask_app.extensions["pi5_media_coordinator"] = _StubPi5MediaCoordinator()
+    recording_manager = RecordingManager(
+        relative_config["storage"]["recordings_dir"],
+        relative_config["storage"]["max_recordings"],
+    )
+    recording_manager.save_recording(str(tmp_audio_file))
+
+    with flask_app.test_client() as relative_client:
+        resp = relative_client.get("/api/recordings/1/audio")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "audio/wav"
+    assert resp.data == tmp_audio_file.read_bytes()

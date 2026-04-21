@@ -22,7 +22,7 @@ class RecordingManager:
     """Persist standalone recordings separately from conversion history."""
 
     def __init__(self, recordings_dir: str, max_recordings: int = 5) -> None:
-        self._dir = Path(recordings_dir)
+        self._dir = Path(recordings_dir).expanduser().resolve()
         self._dir.mkdir(parents=True, exist_ok=True)
         self._meta_path = self._dir / "metadata.json"
         self._max = max_recordings

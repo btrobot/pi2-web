@@ -22,7 +22,7 @@ class HistoryManager:
     """Persist conversion history as `record_{id}/manifest.json` groups."""
 
     def __init__(self, history_dir: str, max_records: int = 5) -> None:
-        self._dir = Path(history_dir)
+        self._dir = Path(history_dir).expanduser().resolve()
         self._dir.mkdir(parents=True, exist_ok=True)
         self._index_path = self._dir / "index.json"
         self._max = max_records
