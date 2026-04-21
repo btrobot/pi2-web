@@ -1499,7 +1499,7 @@ def test_speech_conversion_accepts_audio_upload_and_returns_frozen_dto(
         "target_lang": mode.target_lang,
         "created_at": "2026-04-18T17:01:00",
         "artifacts": {
-            "input_text": None,
+            "input_text": "input_text.txt",
             "output_text": "output_text.txt",
             "input_audio": "input_audio.wav",
             "output_audio": "output_audio.wav" if mode.output_type == "audio" else None,
@@ -1532,7 +1532,7 @@ def test_speech_conversion_accepts_audio_upload_and_returns_frozen_dto(
         "target_lang": mode.target_lang,
         "created_at": "2026-04-18T17:01:00",
         "artifacts": {
-            "input_text_url": None,
+            "input_text_url": "/api/history/13/artifacts/input_text",
             "output_text_url": "/api/history/13/artifacts/output_text",
             "input_audio_url": "/api/history/13/artifacts/input_audio",
             "output_audio_url": "/api/history/13/artifacts/output_audio" if mode.output_type == "audio" else None,
@@ -1567,7 +1567,7 @@ def test_speech_conversion_accepts_recording_id_reuse(client, app, tmp_audio_fil
         "target_lang": mode.target_lang,
         "created_at": "2026-04-18T17:02:00",
         "artifacts": {
-            "input_text": None,
+            "input_text": "input_text.txt",
             "output_text": "output_text.txt",
             "input_audio": "input_audio.wav",
             "output_audio": "output_audio.wav",
@@ -1615,7 +1615,7 @@ def test_speech_conversion_returns_busy_state_when_pi5_playback_is_occupied(clie
         "target_lang": "en",
         "created_at": "2026-04-20T12:01:00",
         "artifacts": {
-            "input_text": None,
+            "input_text": "input_text.txt",
             "output_text": "output_text.txt",
             "input_audio": "input_audio.wav",
             "output_audio": "output_audio.wav",
@@ -1651,7 +1651,7 @@ def test_speech_conversion_returns_busy_state_when_pi5_playback_is_occupied(clie
             "target_lang": "en",
             "created_at": "2026-04-20T12:01:00",
             "artifacts": {
-                "input_text_url": None,
+                "input_text_url": "/api/history/14/artifacts/input_text",
                 "output_text_url": "/api/history/14/artifacts/output_text",
                 "input_audio_url": "/api/history/14/artifacts/input_audio",
                 "output_audio_url": "/api/history/14/artifacts/output_audio",
@@ -1951,6 +1951,7 @@ def _seed_history_record(manager: HistoryManager, mode_key: str, index: int, aud
     mode = get_mode_definition(mode_key)
     source_text = f"source-{index}-{mode_key}"
     output_text = f"output-{index}-{mode_key}" if ("mt" in mode.pipeline_chain or mode.output_type == "text") else None
+    stores_intermediate_asr_text = mode.input_type == "audio" and "mt" in mode.pipeline_chain
     kwargs = {
         "mode_key": mode.mode_key,
         "group_key": mode.group_key,
@@ -1958,7 +1959,7 @@ def _seed_history_record(manager: HistoryManager, mode_key: str, index: int, aud
         "target_lang": mode.target_lang,
         "source_text": source_text,
         "target_text": output_text,
-        "input_text": source_text if mode.input_type == "text" else None,
+        "input_text": source_text if mode.input_type == "text" or stores_intermediate_asr_text else None,
         "output_text": output_text,
         "input_audio_path": audio_path if mode.input_type == "audio" else None,
         "output_audio_path": audio_path if mode.output_type == "audio" else None,
@@ -2003,7 +2004,7 @@ def test_recent_history_returns_latest_three_summary_items(client, mock_config, 
     assert data["items"][0]["mode_key"] == "asr_mt_tts_zh_en"
     assert data["items"][0]["output_kind"] == "audio"
     assert data["items"][0]["artifact_urls"] == {
-        "input_text_url": None,
+        "input_text_url": "/api/history/6/artifacts/input_text",
         "output_text_url": "/api/history/6/artifacts/output_text",
         "input_audio_url": "/api/history/6/artifacts/input_audio",
         "output_audio_url": "/api/history/6/artifacts/output_audio",
@@ -2046,13 +2047,13 @@ def test_history_returns_latest_five_full_items(client, mock_config, tmp_audio_f
     assert first["values"]["source_text"] == "source-6-asr_mt_tts_zh_en"
     assert first["values"]["output_text"] == "output-6-asr_mt_tts_zh_en"
     assert first["artifacts"] == {
-        "input_text": None,
+        "input_text": "input_text.txt",
         "output_text": "output_text.txt",
         "input_audio": "input_audio.wav",
         "output_audio": "output_audio.wav",
     }
     assert first["artifact_urls"] == {
-        "input_text_url": None,
+        "input_text_url": "/api/history/6/artifacts/input_text",
         "output_text_url": "/api/history/6/artifacts/output_text",
         "input_audio_url": "/api/history/6/artifacts/input_audio",
         "output_audio_url": "/api/history/6/artifacts/output_audio",
@@ -2113,6 +2114,7 @@ def test_export_history_returns_frozen_zip_structure(client, mock_config, tmp_au
         names = set(archive.namelist())
     assert "index.json" in names
     assert "record_001/manifest.json" in names
+    assert "record_001/input_text.txt" in names
     assert "record_001/input_audio.wav" in names
     assert "record_001/output_audio.wav" in names
     assert "record_001/output_text.txt" in names

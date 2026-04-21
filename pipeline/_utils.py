@@ -65,6 +65,8 @@ def history_payload(mode: ModeDefinition, normalized_result: dict[str, Any]) -> 
 
     source_text = normalized_result.get("source_text")
     target_text = normalized_result.get("output_text")
+    stores_intermediate_asr_text = mode.input_type == "audio" and "mt" in mode.pipeline_chain
+    input_text = source_text if mode.input_type == "text" or stores_intermediate_asr_text else None
 
     return {
         "record_type": mode.mode_key,
@@ -74,7 +76,7 @@ def history_payload(mode: ModeDefinition, normalized_result: dict[str, Any]) -> 
         "target_lang": mode.target_lang,
         "source_text": source_text,
         "target_text": target_text,
-        "input_text": source_text if mode.input_type == "text" else None,
+        "input_text": input_text,
         "output_text": target_text,
         "input_audio_path": normalized_result.get("input_audio_path"),
         "output_audio_path": normalized_result.get("output_audio_path"),

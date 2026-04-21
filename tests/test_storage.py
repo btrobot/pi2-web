@@ -96,6 +96,7 @@ class TestHistoryManager:
             target_lang="en",
             source_text="你好",
             target_text="Hello",
+            input_text="recognized-zh",
             input_audio_path=str(input_audio),
             output_audio_path=str(output_audio),
         )
@@ -110,6 +111,7 @@ class TestHistoryManager:
 
         assert s2s_record["artifacts"]["input_audio"] == "input_audio.wav"
         assert s2s_record["artifacts"]["output_audio"] == "output_audio.wav"
+        assert s2s_manifest["artifacts"]["input_text"] == "input_text.txt"
         assert s2s_manifest["artifacts"]["output_text"] == "output_text.txt"
         assert s2s_manifest["values"]["output_text"] == "Hello"
 
@@ -227,6 +229,7 @@ class TestHistoryManager:
             target_lang="en",
             source_text="你好",
             target_text="Hello",
+            input_text="recognized-zh",
             input_audio_path=str(input_audio),
             output_audio_path=str(output_audio),
         )
@@ -240,6 +243,7 @@ class TestHistoryManager:
 
         assert "index.json" in names
         assert "record_001/manifest.json" in names
+        assert "record_001/input_text.txt" in names
         assert "record_001/input_audio.wav" in names
         assert "record_001/output_audio.wav" in names
         assert "record_001/output_text.txt" in names
