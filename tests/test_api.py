@@ -1181,6 +1181,11 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert zh["recordings.back_to_main"] == "返回主菜单"
     assert zh["recordings.empty"] == '当前还没有已保存的“录制音频”。'
     assert zh["recordings.recent_label"] == "最近录音"
+    assert zh["recordings.download"] == "下载录音"
+    assert zh["recordings.delete"] == "删除录音"
+    assert zh["recordings.delete_confirm"] == "确认删除这条录音吗？"
+    assert zh["recordings.delete_success"] == "录音已删除。"
+    assert zh["recordings.delete_failed"] == "删除录音失败，请稍后重试。"
     assert zh["recordings.panel_title"] == "录音菜单"
     assert zh["recordings.controls_label"] == "录音操作"
     assert zh["speech.input_hint"] == "浏览器只负责控制；请在 Pi5 麦克风旁开始/停止录音，或复用已保存的 Pi5 录音。"
