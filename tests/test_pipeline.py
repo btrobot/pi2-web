@@ -80,7 +80,7 @@ import pipeline
 from app.mode_registry import get_mode_definition, list_mode_definitions
 from pipeline import run_pipeline
 from pipeline._utils import build_base_result
-from pipeline.composite import run_composite_mode
+from pipeline.composite import _should_preprocess_speech_mt, run_composite_mode
 from pipeline.single import run_single_mode
 
 
@@ -337,6 +337,228 @@ def test_run_composite_mode_asr_mt_tts_returns_text_and_audio(config):
     assert result["input_audio_path"] == "/tmp/input.wav"
     assert result["output_audio_path"] == "/tmp/output.wav"
     assert result["error"] is None
+
+
+def test_should_preprocess_speech_mt_targets_only_zh_to_en_asr_mt_modes():
+    target_map = {
+        mode.mode_key: _should_preprocess_speech_mt(mode)
+        for mode in list_mode_definitions()
+    }
+
+    assert target_map == {
+        "tts_zh_zh": False,
+        "tts_en_en": False,
+        "asr_zh_zh": False,
+        "asr_en_en": False,
+        "mt_tts_zh_en": False,
+        "mt_tts_en_zh": False,
+        "asr_mt_zh_en": True,
+        "asr_mt_en_zh": False,
+        "mt_zh_en": False,
+        "mt_en_zh": False,
+        "asr_mt_tts_zh_en": True,
+        "asr_mt_tts_en_zh": False,
+    }
+
+
+@pytest.mark.parametrize("mode_key", ["asr_mt_zh_en", "asr_mt_tts_zh_en"])
+def test_run_composite_mode_uses_speech_mt_seam_only_for_target_modes(config, mode_key):
+    mode = get_mode_definition(mode_key)
+    raw_text = "识别原文"
+    prepared_text = "prepared for mt"
+
+    with patch("pipeline.composite.capture_audio", return_value="/tmp/input.wav") as mock_capture, \
+         patch("pipeline.composite.recognize_audio", return_value=raw_text) as mock_recognize, \
+         patch("pipeline.composite._prepare_text_for_speech_mt", return_value=prepared_text) as mock_prepare, \
+         patch("pipeline.composite.translate_text", return_value="hello") as mock_translate, \
+         patch("pipeline.composite.synthesize_text", return_value="/tmp/output.wav") as mock_synthesize:
+        result = run_composite_mode(mode, config=config)
+
+    mock_capture.assert_called_once()
+    mock_recognize.assert_called_once_with(config=config, audio_path="/tmp/input.wav", lang="zh")
+    mock_prepare.assert_called_once_with(raw_text, mode)
+    mock_translate.assert_called_once_with(text=prepared_text, source_lang="zh", target_lang="en")
+    if mode.pipeline_chain[-1] == "tts":
+        mock_synthesize.assert_called_once()
+        assert result["output_audio_path"] == "/tmp/output.wav"
+    else:
+        mock_synthesize.assert_not_called()
+        assert result["output_audio_path"] is None
+    assert result["source_text"] == raw_text
+    assert result["output_text"] == "hello"
+    assert result["error"] is None
+
+
+@pytest.mark.parametrize(
+    ("mode_key", "input_text", "source_text"),
+    [
+        ("mt_zh_en", "你好", "你好"),
+        ("mt_tts_zh_en", "你好", "你好"),
+        ("asr_mt_en_zh", None, "hello world"),
+        ("asr_mt_tts_en_zh", None, "hello world"),
+    ],
+)
+def test_run_composite_mode_bypasses_speech_mt_seam_for_non_target_composites(
+    config,
+    mode_key,
+    input_text,
+    source_text,
+):
+    mode = get_mode_definition(mode_key)
+
+    with patch("pipeline.composite.capture_audio", return_value="/tmp/input.wav") as mock_capture, \
+         patch("pipeline.composite.recognize_audio", return_value=source_text) as mock_recognize, \
+         patch("pipeline.composite._prepare_text_for_speech_mt") as mock_prepare, \
+         patch("pipeline.composite.translate_text", return_value="translated") as mock_translate, \
+         patch("pipeline.composite.synthesize_text", return_value="/tmp/output.wav") as mock_synthesize:
+        result = run_composite_mode(mode, config=config, input_text=input_text)
+
+    if mode.pipeline_chain[0] == "asr":
+        mock_capture.assert_called_once()
+        mock_recognize.assert_called_once()
+    else:
+        mock_capture.assert_not_called()
+        mock_recognize.assert_not_called()
+    mock_prepare.assert_not_called()
+    mock_translate.assert_called_once_with(
+        text=source_text,
+        source_lang=mode.source_lang,
+        target_lang=mode.target_lang,
+    )
+    if mode.pipeline_chain[-1] == "tts":
+        mock_synthesize.assert_called_once()
+    else:
+        mock_synthesize.assert_not_called()
+    assert result["source_text"] == source_text
+    assert result["output_text"] == "translated"
+    assert result["error"] is None
+
+
+@pytest.mark.parametrize("mode_key", ["asr_zh_zh", "asr_en_en"])
+def test_same_language_asr_modes_never_touch_speech_mt_seam(config, mode_key):
+    with patch("pipeline.composite._prepare_text_for_speech_mt") as mock_prepare, \
+         patch("pipeline.single.capture_audio", return_value="/tmp/input.wav"), \
+         patch("pipeline.single.recognize_audio", return_value="recognized"):
+        result = run_pipeline(mode_key, config)
+
+    mock_prepare.assert_not_called()
+    assert result["mode_key"] == mode_key
+    assert result["source_text"] == "recognized"
+    assert result["output_text"] == "recognized"
+    assert result["error"] is None
+
+
+@pytest.mark.parametrize(
+    ("mode_key", "group_key", "output_audio_path"),
+    [
+        ("asr_mt_zh_en", "cross_speech_to_text", None),
+        ("asr_mt_tts_zh_en", "cross_speech_to_speech", "/tmp/output.wav"),
+    ],
+)
+def test_run_pipeline_persists_raw_source_text_while_speech_mt_seam_changes_transient_mt_input(
+    config,
+    mode_key,
+    group_key,
+    output_audio_path,
+):
+    raw_text = "原始识别"
+    prepared_text = "prepared for mt"
+    history_manager = _make_history_manager(record_id=12)
+
+    with patch("pipeline.composite.capture_audio", return_value="/tmp/input.wav"), \
+         patch("pipeline.composite.recognize_audio", return_value=raw_text), \
+         patch("pipeline.composite._prepare_text_for_speech_mt", return_value=prepared_text) as mock_prepare, \
+         patch("pipeline.composite.translate_text", return_value="hello") as mock_translate, \
+         patch("pipeline.composite.synthesize_text", return_value="/tmp/output.wav") as mock_synthesize, \
+         patch("pipeline.HistoryManager", return_value=history_manager):
+        result = run_pipeline(mode_key, config, playback=False)
+
+    mock_prepare.assert_called_once_with(raw_text, get_mode_definition(mode_key))
+    mock_translate.assert_called_once_with(text=prepared_text, source_lang="zh", target_lang="en")
+    if output_audio_path is None:
+        mock_synthesize.assert_not_called()
+    else:
+        mock_synthesize.assert_called_once_with(
+            config=config,
+            text="hello",
+            lang="en",
+            prefix=f"{mode_key}_output",
+            playback=False,
+        )
+    history_manager.add_record.assert_called_once_with(
+        record_type=mode_key,
+        mode_key=mode_key,
+        group_key=group_key,
+        source_lang="zh",
+        target_lang="en",
+        source_text=raw_text,
+        target_text="hello",
+        input_text=None,
+        output_text="hello",
+        input_audio_path="/tmp/input.wav",
+        output_audio_path=output_audio_path,
+    )
+    assert result["source_text"] == raw_text
+    assert result["output_text"] == "hello"
+    assert result["output_audio_path"] == output_audio_path
+    assert result["history_id"] == 12
+
+
+@pytest.mark.parametrize(
+    ("mode_key", "group_key", "output_audio_path"),
+    [
+        ("asr_mt_zh_en", "cross_speech_to_text", None),
+        ("asr_mt_tts_zh_en", "cross_speech_to_speech", "/tmp/output.wav"),
+    ],
+)
+def test_run_pipeline_applies_speech_chain_preprocess_before_target_zh_en_translation(
+    config,
+    mode_key,
+    group_key,
+    output_audio_path,
+):
+    raw_text = "\u4f60\u597d\u3002\u4f60\u597d\u3002\u4e16\u754c\u3002\u4eca\u5929\u3002\u5929\u6c14\u3002\u5f88\u597d\u3002"
+    history_manager = _make_history_manager(record_id=13)
+
+    with patch("pipeline.composite.capture_audio", return_value="/tmp/input.wav"), \
+         patch("pipeline.composite.recognize_audio", return_value=raw_text), \
+         patch("pipeline.composite.translate_text", return_value="hello world") as mock_translate, \
+         patch("pipeline.composite.synthesize_text", return_value="/tmp/output.wav") as mock_synthesize, \
+         patch("pipeline.HistoryManager", return_value=history_manager):
+        result = run_pipeline(mode_key, config, playback=False)
+
+    mock_translate.assert_called_once_with(
+        text="\u4f60\u597d. \u4e16\u754c. \u4eca\u5929. \u5929\u6c14. \u5f88\u597d.",
+        source_lang="zh",
+        target_lang="en",
+    )
+    if output_audio_path is None:
+        mock_synthesize.assert_not_called()
+    else:
+        mock_synthesize.assert_called_once_with(
+            config=config,
+            text="hello world",
+            lang="en",
+            prefix=f"{mode_key}_output",
+            playback=False,
+        )
+    history_manager.add_record.assert_called_once_with(
+        record_type=mode_key,
+        mode_key=mode_key,
+        group_key=group_key,
+        source_lang="zh",
+        target_lang="en",
+        source_text=raw_text,
+        target_text="hello world",
+        input_text=None,
+        output_text="hello world",
+        input_audio_path="/tmp/input.wav",
+        output_audio_path=output_audio_path,
+    )
+    assert result["source_text"] == raw_text
+    assert result["output_text"] == "hello world"
+    assert result["output_audio_path"] == output_audio_path
+    assert result["history_id"] == 13
 
 
 def test_same_language_modes_do_not_add_translation_output(config):

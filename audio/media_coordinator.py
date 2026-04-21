@@ -333,11 +333,11 @@ class Pi5MediaCoordinator:
             active_kind = None
 
         playback = dict(self._playback_info) if self._playback_info else None
+        # Keep the top-level Pi5 state payload stable for API consumers.
+        # Device-specific details stay nested inside playback / recording entries.
         return {
             "status": status,
             "device": self._device,
-            "playback_device": self._playback_device,
-            "record_device": self._record_device,
             "active_kind": active_kind,
             "playback": playback,
             "recording": recording_info,

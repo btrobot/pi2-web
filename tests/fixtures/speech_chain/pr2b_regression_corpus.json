@@ -1,0 +1,96 @@
+{
+  "target_cases": [
+    {
+      "id": "normalize_whitespace_and_supported_punctuation",
+      "raw_text": "  你好，   世界。  再见？  ",
+      "expected_output": "你好, 世界. 再见?",
+      "expected_candidate": "你好, 世界. 再见?",
+      "expected_fallback": false,
+      "expected_fallback_reason": null
+    },
+    {
+      "id": "normalize_ellipsis_colon_semicolon",
+      "raw_text": "提示：先等；再说……然后继续",
+      "expected_output": "提示: 先等; 再说... 然后继续",
+      "expected_candidate": "提示: 先等; 再说... 然后继续",
+      "expected_fallback": false,
+      "expected_fallback_reason": null
+    },
+    {
+      "id": "dedupe_adjacent_exact_clauses_only",
+      "raw_text": "你好。你好。世界。今天。天气。很好。",
+      "expected_output": "你好. 世界. 今天. 天气. 很好.",
+      "expected_candidate": "你好. 世界. 今天. 天气. 很好.",
+      "expected_fallback": false,
+      "expected_fallback_reason": null
+    },
+    {
+      "id": "keep_non_adjacent_duplicates",
+      "raw_text": "你好。世界。你好。今天。",
+      "expected_output": "你好. 世界. 你好. 今天.",
+      "expected_candidate": "你好. 世界. 你好. 今天.",
+      "expected_fallback": false,
+      "expected_fallback_reason": null
+    },
+    {
+      "id": "bucket_unpunctuated_text_at_24_chars",
+      "raw_text": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲乙乙乙",
+      "expected_output": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲 乙乙乙",
+      "expected_candidate": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲 乙乙乙",
+      "expected_fallback": false,
+      "expected_fallback_reason": null
+    },
+    {
+      "id": "fallback_when_candidate_empty",
+      "raw_text": "  ，  。  ？  ",
+      "expected_output": "  ，  。  ？  ",
+      "expected_candidate": "",
+      "expected_fallback": true,
+      "expected_fallback_reason": "empty"
+    },
+    {
+      "id": "fallback_when_meaningful_count_drops_too_far",
+      "raw_text": "你好。你好。你好。你好。再见。",
+      "expected_output": "你好。你好。你好。你好。再见。",
+      "expected_candidate": "你好. 再见.",
+      "expected_fallback": true,
+      "expected_fallback_reason": "count_drop"
+    },
+    {
+      "id": "idempotent_clean_input",
+      "raw_text": "你好, 世界. 再见?",
+      "expected_output": "你好, 世界. 再见?",
+      "expected_candidate": "你好, 世界. 再见?",
+      "expected_fallback": false,
+      "expected_fallback_reason": null
+    }
+  ],
+  "non_target_modes": [
+    {
+      "mode_key": "mt_zh_en",
+      "input_text": "你好。你好。世界。"
+    },
+    {
+      "mode_key": "mt_tts_zh_en",
+      "input_text": "你好。你好。世界。"
+    },
+    {
+      "mode_key": "asr_mt_en_zh",
+      "recognized_text": "hello hello world today weather nice"
+    },
+    {
+      "mode_key": "asr_mt_tts_en_zh",
+      "recognized_text": "hello hello world today weather nice"
+    }
+  ],
+  "same_language_modes": [
+    {
+      "mode_key": "asr_zh_zh",
+      "recognized_text": "你好世界"
+    },
+    {
+      "mode_key": "asr_en_en",
+      "recognized_text": "hello world"
+    }
+  ]
+}

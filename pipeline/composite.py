@@ -9,8 +9,27 @@ from typing import Any
 from app.mode_registry import ModeDefinition, get_mode_definition
 from pipeline._utils import build_base_result
 from pipeline.operations import capture_audio, recognize_audio, synthesize_text, translate_text
+from pipeline.speech_mt_preprocess import prepare_speech_mt_text
 
 logger = logging.getLogger(__name__)
+
+
+def _should_preprocess_speech_mt(mode: ModeDefinition) -> bool:
+    """Return whether the composite speech->MT seam is eligible for preprocessing."""
+
+    return (
+        mode.pipeline_chain[0] == "asr"
+        and "mt" in mode.pipeline_chain
+        and mode.source_lang == "zh"
+        and mode.target_lang == "en"
+    )
+
+
+def _prepare_text_for_speech_mt(text: str, mode: ModeDefinition) -> str:
+    """Apply the scoped zh->en speech preprocess behind the composite seam."""
+
+    _ = mode
+    return prepare_speech_mt_text(text)
 
 
 def run_composite_mode(
@@ -37,6 +56,8 @@ def run_composite_mode(
 
         current_text = source_text
         if "mt" in mode.pipeline_chain:
+            if _should_preprocess_speech_mt(mode):
+                current_text = _prepare_text_for_speech_mt(current_text, mode)
             current_text = translate_text(
                 text=current_text,
                 source_lang=mode.source_lang,

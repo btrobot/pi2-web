@@ -502,6 +502,41 @@ def test_pi5_recording_stop_surfaces_failure_state(client, app):
     }
 
 
+def test_real_pi5_media_coordinator_keeps_public_state_shape_stable_while_nested_devices_remain_specific(
+    mock_config,
+    tmp_audio_file,
+):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+    playback_proc = _FakePlaybackProcess()
+
+    with (
+        patch("audio.media_coordinator.play_wav", return_value=playback_proc),
+        patch.object(Pi5MediaCoordinator, "_watch_playback", autospec=True, return_value=None),
+    ):
+        playback_state = coordinator.start_playback(
+            str(tmp_audio_file),
+            mode_key="tts_zh_zh",
+            history_id=3,
+            audio_url="/api/history/3/artifacts/output_audio",
+        )
+
+    base_state = coordinator.get_state()
+    assert "playback_device" not in base_state
+    assert "record_device" not in base_state
+    assert playback_state["device"] == "plughw:2,0"
+    assert playback_state["playback"]["device"] == "plughw:2,0"
+
+    recording_coordinator = Pi5MediaCoordinator(config=mock_config)
+
+    with patch("threading.Thread.start", autospec=True, return_value=None):
+        recording_state = recording_coordinator.start_recording()
+
+    assert "playback_device" not in recording_state
+    assert "record_device" not in recording_state
+    assert recording_state["device"] == "plughw:2,0"
+    assert recording_state["recording"]["device"] == "plughw:2,0"
+
+
 def test_index_uses_task_header_without_breadcrumb(client):
     html = _get_index_html(client)
     assert 'id="app-task-header"' in html
