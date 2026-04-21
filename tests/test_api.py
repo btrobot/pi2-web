@@ -250,6 +250,26 @@ def test_real_pi5_media_coordinator_keeps_speech_input_captures_out_of_standalon
     assert manager.get_audio_path(saved["id"]) is not None
 
 
+def test_real_pi5_media_coordinator_enforces_standalone_recording_limit(mock_config, tmp_audio_file):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+
+    def _fake_capture_audio(*, config, prefix, stop_flag, output_path, max_duration):  # noqa: ARG001
+        Path(output_path).write_bytes(tmp_audio_file.read_bytes())
+        assert stop_flag is not None
+        stop_flag.wait(timeout=0.05)
+        return output_path
+
+    with patch("audio.media_coordinator.capture_audio", side_effect=_fake_capture_audio):
+        for _ in range(6):
+            coordinator.start_recording(category="standalone")
+            coordinator.stop_recording()
+
+    manager = _recording_manager(mock_config)
+    items = manager.list_recordings(category="standalone")
+    assert [item["id"] for item in items] == [2, 3, 4, 5, 6]
+    assert manager.get_audio_path(1, category="standalone") is None
+
+
 def test_real_pi5_media_coordinator_reports_recording_before_worker_runs(mock_config):
     coordinator = Pi5MediaCoordinator(config=mock_config)
 
@@ -797,6 +817,9 @@ def test_index_recordings_view_contract_uses_recording_menu_copy_instead_of_reus
     recordings_body = script[recordings_start:recordings_end]
     assert "const isRecordingsView = state.activeKind === 'recordings';" in recordings_body
     assert "getMessage(isRecordingsView ? 'recordings.empty' : 'speech.no_recordings')" in recordings_body
+    assert "getMessage(isRecordingsView ? 'recordings.download' : 'text.download_audio')" in recordings_body
+    assert "getMessage('recordings.delete')" in recordings_body
+    assert "handleDeleteRecording(recording.id)" in recordings_body
 
     input_start = script.index("function renderInputPanel() {")
     input_end = script.index("\n\n    function renderShell()", input_start)
@@ -805,6 +828,13 @@ def test_index_recordings_view_contract_uses_recording_menu_copy_instead_of_reus
     assert "speechInputLabel.textContent = getMessage(isRecordingsView ? 'recordings.controls_label' : 'speech.input_label');" in input_body
     assert "const recordingsLabel = document.getElementById('speech-recordings-label');" in input_body
     assert "recordingsLabel.textContent = getMessage(isRecordingsView ? 'recordings.recent_label' : 'speech.recordings_label');" in input_body
+
+    delete_start = script.index("async function handleDeleteRecording(recordId) {")
+    delete_end = script.index("\n\n    async function loadRecordings()", delete_start)
+    delete_body = script[delete_start:delete_end]
+    assert "window.confirm(getMessage('recordings.delete_confirm'))" in delete_body
+    assert "await fetchJson(`/api/recordings/${recordId}`" in delete_body
+    assert "setFlowStatus('recordings.delete_success', 'ready'" in delete_body
 
 
 @pytest.mark.parametrize(
@@ -1094,6 +1124,11 @@ def test_bootstrap_i18n_contains_required_shell_and_text_flow_keys(client):
         "recordings.saved",
         "recordings.empty",
         "recordings.recent_label",
+        "recordings.download",
+        "recordings.delete",
+        "recordings.delete_confirm",
+        "recordings.delete_success",
+        "recordings.delete_failed",
         "recordings.panel_title",
         "recordings.panel_caption",
         "recordings.controls_label",
@@ -1173,6 +1208,8 @@ def test_bootstrap_i18n_keeps_bilingual_labels_human_readable(client):
     assert en["recordings.back_to_main"] == "Back to main menu"
     assert en["recordings.empty"] == "No saved recordings are available in the recordings folder yet."
     assert en["recordings.recent_label"] == "Recent recordings"
+    assert en["recordings.download"] == "Download recording"
+    assert en["recordings.delete"] == "Delete recording"
     assert en["recordings.panel_title"] == "Recording menu"
     assert en["recordings.controls_label"] == "Recording controls"
     assert en["panel.output"] == "Results"
@@ -2108,6 +2145,8 @@ def test_create_recording_accepts_wav_upload_and_returns_frozen_item(client, moc
     audio_resp = client.get("/api/recordings/1/audio")
     assert audio_resp.status_code == 200
     assert audio_resp.mimetype == "audio/wav"
+    assert "attachment;" in audio_resp.headers["Content-Disposition"]
+    assert "recording_001.wav" in audio_resp.headers["Content-Disposition"]
     assert audio_resp.data == tmp_audio_file.read_bytes()
 
 

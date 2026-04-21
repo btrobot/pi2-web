@@ -1018,6 +1018,7 @@
       flowStatus: { key: 'text.input_hint', tone: 'info', raw: '' },
       recordings: [],
       recordingsState: 'idle',
+      recordingsDeletingId: null,
       pi5Media: null,
       pi5MediaPollId: null,
       speechInput: {
@@ -1405,7 +1406,7 @@
       return button;
     }
 
-    function createActionLink(label, href, { download = false, newTab = true } = {}) {
+    function createActionLink(label, href, { download = false, downloadName = '', newTab = true } = {}) {
       const link = document.createElement('a');
       link.className = 'link-button';
       link.href = href;
@@ -1414,7 +1415,7 @@
         link.rel = 'noreferrer';
       }
       if (download) {
-        link.setAttribute('download', '');
+        link.setAttribute('download', downloadName || '');
       }
       link.textContent = label;
       return link;
@@ -1794,10 +1795,28 @@
             </div>
             ${isRecordingsView ? '' : `<button type="button" class="recording-action">${getMessage('speech.use_recording')}</button>`}
           </div>
-          <div class="recording-actions">
-            <a class="link-button" href="${recording.audio_url}" download>${getMessage('text.download_audio')}</a>
-          </div>
         `;
+        const actions = document.createElement('div');
+        actions.className = 'recording-actions';
+        const downloadLink = createActionLink(
+          getMessage(isRecordingsView ? 'recordings.download' : 'text.download_audio'),
+          recording.audio_url,
+          {
+            download: true,
+            downloadName: `recording-${recording.id}.wav`,
+            newTab: false,
+          },
+        );
+        actions.appendChild(downloadLink);
+        if (isRecordingsView) {
+          const deleteButton = createActionButton(
+            getMessage('recordings.delete'),
+            () => handleDeleteRecording(recording.id),
+          );
+          deleteButton.disabled = state.recordingsDeletingId === recording.id || state.isSubmitting || isPi5RecordingActive();
+          actions.appendChild(deleteButton);
+        }
+        card.appendChild(actions);
         const button = card.querySelector('.recording-action');
         if (button) {
           button.classList.toggle('is-active', state.speechInput.sourceType === 'recording' && state.speechInput.recordingId === recording.id);
@@ -2570,6 +2589,39 @@
       }
       renderShell();
       return state.pi5Media;
+    }
+
+    async function handleDeleteRecording(recordId) {
+      if (!window.confirm(getMessage('recordings.delete_confirm'))) {
+        return;
+      }
+
+      state.recordingsDeletingId = recordId;
+      renderShell();
+      try {
+        const { response, payload } = await fetchJson(`/api/recordings/${recordId}`, {
+          method: 'DELETE',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        if (state.speechInput.recordingId === recordId) {
+          clearSpeechInputSource();
+        }
+        if (state.pendingReuseRecording?.id === recordId) {
+          clearPendingReuseRecording();
+        }
+
+        await loadRecordings();
+        setFlowStatus('recordings.delete_success', 'ready', `${getMessage('recordings.delete_success')} #${recordId}`);
+      } catch (error) {
+        setFlowStatus('', 'error', error.message || getMessage('recordings.delete_failed'));
+      } finally {
+        state.recordingsDeletingId = null;
+        renderShell();
+      }
     }
 
     async function loadRecordings() {

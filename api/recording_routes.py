@@ -80,7 +80,12 @@ def get_recording_audio(recording_id: int) -> Response:
 
     if path is None:
         abort(404, description="recording file not found")
-    return send_file(path, mimetype="audio/wav")
+    return send_file(
+        path,
+        mimetype="audio/wav",
+        as_attachment=True,
+        download_name=path.name,
+    )
 
 
 @recording_bp.route("/api/recordings/<int:recording_id>", methods=["DELETE"])
