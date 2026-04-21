@@ -225,10 +225,62 @@ class TestHistoryManager:
         index = json.loads((history_dir / "index.json").read_text(encoding="utf-8"))
         assert index["items"] == []
 
+    def test_init_prunes_orphan_record_directories_outside_retained_index(self, history_dir: Path) -> None:
+        orphan_dir = history_dir / "record_009"
+        orphan_dir.mkdir()
+        (orphan_dir / "manifest.json").write_text("{}", encoding="utf-8")
+        retained_dir = history_dir / "record_001"
+        retained_dir.mkdir()
+        (retained_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "id": 1,
+                    "mode_key": "mt_zh_en",
+                    "group_key": "cross_text_to_text",
+                    "source_lang": "zh",
+                    "target_lang": "en",
+                    "created_at": "2026-04-21T10:00:00",
+                    "artifacts": {},
+                    "values": {"source_text": "a", "output_text": "b"},
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        (history_dir / "index.json").write_text(
+            json.dumps(
+                {
+                    "items": [
+                        {
+                            "id": 1,
+                            "mode_key": "mt_zh_en",
+                            "group_key": "cross_text_to_text",
+                            "source_lang": "zh",
+                            "target_lang": "en",
+                            "created_at": "2026-04-21T10:00:00",
+                            "artifacts": {},
+                            "values": {"source_text": "a", "output_text": "b"},
+                        }
+                    ],
+                    "max_records": 7,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        HistoryManager(str(history_dir), max_records=7)
+
+        assert retained_dir.exists()
+        assert not orphan_dir.exists()
+
     def test_export_all_contains_index_manifests_and_artifacts(
         self,
         manager: HistoryManager,
         tmp_path: Path,
+        history_dir: Path,
     ) -> None:
         input_audio = make_wav(tmp_path / "input.wav")
         output_audio = make_wav(tmp_path / "output.wav")
@@ -243,6 +295,9 @@ class TestHistoryManager:
             input_audio_path=str(input_audio),
             output_audio_path=str(output_audio),
         )
+        orphan_dir = history_dir / "record_999"
+        orphan_dir.mkdir()
+        (orphan_dir / "orphan.txt").write_text("orphan", encoding="utf-8")
 
         exported = manager.export_all()
 
@@ -261,6 +316,8 @@ class TestHistoryManager:
         assert "output_text/record_001_output_text.txt" in names
         assert "input_audio/record_001_input_audio.wav" in names
         assert "output_audio/record_001_output_audio.wav" in names
+        assert "record_999/orphan.txt" not in names
+        assert not orphan_dir.exists()
 
 
 class TestRecordingManager:

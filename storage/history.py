@@ -51,6 +51,14 @@ class HistoryManager:
         suffix = _ARTIFACT_SUFFIXES[artifact_kind]
         return self._artifact_dir(artifact_kind) / f"record_{record_id:03d}_{artifact_kind}{suffix}"
 
+    def _record_id_from_dir_name(self, name: str) -> int | None:
+        if not name.startswith("record_"):
+            return None
+        try:
+            return int(name.split("_", 1)[1])
+        except ValueError:
+            return None
+
     def _load_index(self) -> list[dict[str, Any]]:
         if not self._index_path.exists():
             return []
@@ -272,12 +280,24 @@ class HistoryManager:
             if archive_path.exists():
                 archive_path.unlink()
 
+    def _prune_orphan_record_dirs(self, retained_record_ids: set[int]) -> None:
+        for path in self._dir.glob("record_*"):
+            if not path.is_dir():
+                continue
+            record_id = self._record_id_from_dir_name(path.name)
+            if record_id is None or record_id not in retained_record_ids:
+                shutil.rmtree(path)
+
     def _sync_archive_folders(self) -> None:
+        items = self._load_index()
+        retained_record_ids = {item["id"] for item in items}
+        self._prune_orphan_record_dirs(retained_record_ids)
+
         retained_archive_paths: set[Path] = set()
         for artifact_kind in _ARTIFACT_KINDS:
             self._artifact_dir(artifact_kind).mkdir(parents=True, exist_ok=True)
 
-        for item in self._load_index():
+        for item in items:
             record_id = item["id"]
             artifacts = item.get("artifacts", {})
             for artifact_kind in _ARTIFACT_KINDS:
@@ -352,6 +372,7 @@ class HistoryManager:
 
     def export_all(self) -> io.BytesIO:
         self._sync_archive_folders()
+        items = self._load_index()
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
             if self._index_path.exists():
@@ -359,9 +380,19 @@ class HistoryManager:
             else:
                 archive.writestr("index.json", json.dumps({"items": [], "max_records": self._max}, ensure_ascii=False, indent=2))
 
-            for path in sorted(self._dir.rglob("*")):
-                if path.is_file() and path != self._index_path:
-                    archive.write(path, path.relative_to(self._dir).as_posix())
+            for item in items:
+                record_dir = self._record_dir(item["id"])
+                if not record_dir.exists():
+                    continue
+                for path in sorted(record_dir.rglob("*")):
+                    if path.is_file():
+                        archive.write(path, path.relative_to(self._dir).as_posix())
+
+            for artifact_kind in _ARTIFACT_KINDS:
+                artifact_dir = self._artifact_dir(artifact_kind)
+                for path in sorted(artifact_dir.glob("*")):
+                    if path.is_file():
+                        archive.write(path, path.relative_to(self._dir).as_posix())
         buf.seek(0)
         return buf
 
