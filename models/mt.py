@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 SUPPORTED_PAIRS = {("zh", "en"), ("en", "zh")}
 STANZA_LANGUAGE_CODE_MAPPING = {"zt": "zh-hant", "pb": "pt"}
 
+# Prevent Stanza from downloading models at runtime (offline-only operation)
+os.environ.setdefault("STANZA_USE_NETWORK", "False")
+
 
 class TranslationError(Exception):
     """Machine translation engine failure."""
@@ -254,6 +257,15 @@ class MTEngine:
             return ""
 
         self._ensure_loaded(source_lang, target_lang)
+
+        # Ensure Stanza uses offline mode before translation
+        # Argos Translate internally uses Stanza for sentence boundary detection
+        try:
+            import stanza
+
+            stanza.utils.conf.set_config_dict({"use_network": False}, True)
+        except Exception:
+            pass  # If stanza is not available, continue anyway
 
         start = time.monotonic()
         try:
