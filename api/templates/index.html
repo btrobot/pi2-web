@@ -1406,7 +1406,7 @@
       return button;
     }
 
-    function createActionLink(label, href, { download = false, downloadName = '', newTab = true } = {}) {
+    function createActionLink(label, href, { download = false, newTab = true } = {}) {
       const link = document.createElement('a');
       link.className = 'link-button';
       link.href = href;
@@ -1415,7 +1415,7 @@
         link.rel = 'noreferrer';
       }
       if (download) {
-        link.setAttribute('download', downloadName || '');
+        link.setAttribute('download', '');
       }
       link.textContent = label;
       return link;
@@ -1803,10 +1803,10 @@
           recording.audio_url,
           {
             download: true,
-            downloadName: `recording-${recording.id}.wav`,
             newTab: false,
           },
         );
+        downloadLink.download = `recording-${recording.id}.wav`;
         actions.appendChild(downloadLink);
         if (isRecordingsView) {
           const deleteButton = createActionButton(

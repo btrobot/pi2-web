@@ -81,14 +81,25 @@ class TTSEngine:
         if self._piper_command is not None:
             return self._piper_command
 
-        executable_name = "piper.exe" if os.name == "nt" else "piper"
         interpreter_dir = Path(sys.executable).resolve().parent
-        local_candidate = interpreter_dir / executable_name
-        if local_candidate.exists():
-            self._piper_command = str(local_candidate)
-            return self._piper_command
+        candidate_names: list[str] = []
+        if sys.executable.lower().endswith(".exe") or interpreter_dir.name.lower() == "scripts":
+            candidate_names.append("piper.exe")
+        candidate_names.append("piper")
 
-        self._piper_command = shutil.which("piper")
+        for executable_name in candidate_names:
+            local_candidate = interpreter_dir / executable_name
+            if local_candidate.exists():
+                self._piper_command = str(local_candidate)
+                return self._piper_command
+
+        for command_name in candidate_names:
+            resolved = shutil.which(command_name)
+            if resolved:
+                self._piper_command = resolved
+                return self._piper_command
+
+        self._piper_command = None
         return self._piper_command
 
     def _is_piper_available(self) -> bool:

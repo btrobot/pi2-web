@@ -24,14 +24,16 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 
 def _candidate_local_venv_pythons() -> tuple[Path, ...]:
     if os.name == "nt":
-        return (
+        candidates = (
             _PROJECT_ROOT / ".venv" / "Scripts" / "python.exe",
             _PROJECT_ROOT / "venv" / "Scripts" / "python.exe",
         )
-    return (
-        _PROJECT_ROOT / ".venv" / "bin" / "python",
-        _PROJECT_ROOT / "venv" / "bin" / "python",
-    )
+    else:
+        candidates = (
+            _PROJECT_ROOT / ".venv" / "bin" / "python",
+            _PROJECT_ROOT / "venv" / "bin" / "python",
+        )
+    return tuple(candidate.resolve() for candidate in candidates if candidate.exists())
 
 
 def _running_inside_virtualenv() -> bool:
@@ -44,9 +46,6 @@ def _maybe_reexec_with_local_venv() -> None:
 
     current_executable = Path(sys.executable).resolve()
     for candidate in _candidate_local_venv_pythons():
-        if not candidate.exists():
-            continue
-
         resolved_candidate = candidate.resolve()
         if resolved_candidate == current_executable:
             return
