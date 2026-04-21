@@ -15,18 +15,27 @@ from pipeline.speech_mt_chunking import (
 )
 
 
-def test_chunking_prefers_punctuation_split_and_packs_at_three_units_per_chunk():
-    text = "  你好。 世界？ 再见！ 提示：先等；再说  "
+def test_chunking_prefers_punctuation_split_and_packs_at_four_units_per_chunk():
+    text = "alpha. beta? gamma! delta: epsilon; zeta"
 
-    inspection = inspect_speech_mt_chunking(text, source_lang="zh", target_lang="en")
+    inspection = inspect_speech_mt_chunking(text, source_lang="en", target_lang="zh")
 
-    assert inspection.normalized_text == "你好. 世界? 再见! 提示:先等;再说"
-    assert inspection.atomic_units == ("你好.", "世界?", "再见!", "提示:", "先等;", "再说")
-    assert inspection.packed_chunks == ("你好. 世界? 再见!", "提示: 先等; 再说")
+    assert inspection.normalized_text == text
+    assert inspection.atomic_units == ("alpha.", "beta?", "gamma!", "delta:", "epsilon;", "zeta")
+    assert inspection.packed_chunks == ("alpha. beta? gamma! delta:", "epsilon; zeta")
     assert inspection.used_punctuation_split is True
     assert inspection.fallback_strategy is None
-    assert inspection.chunk_budget == ZH_CHUNK_BUDGET
+    assert inspection.chunk_budget == EN_CHUNK_BUDGET
     assert inspection.max_atomic_units_per_chunk == MAX_ATOMIC_UNITS_PER_CHUNK
+
+
+def test_chunking_packs_four_short_atomic_units_before_starting_next_chunk():
+    text = "one. two. three. four. five."
+
+    inspection = inspect_speech_mt_chunking(text, source_lang="en", target_lang="zh")
+
+    assert inspection.atomic_units == ("one.", "two.", "three.", "four.", "five.")
+    assert inspection.packed_chunks == ("one. two. three. four.", "five.")
 
 
 def test_chunking_uses_zh_char_buckets_when_no_punctuation_exists():
