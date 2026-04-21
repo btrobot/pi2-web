@@ -72,15 +72,22 @@ class ASREngine:
                 rec = vosk.KaldiRecognizer(model, wf.getframerate())
                 rec.SetWords(True)
 
+                results: list[str] = []
                 start = time.monotonic()
                 while True:
                     data = wf.readframes(4000)
                     if not data:
                         break
-                    rec.AcceptWaveform(data)
+                    if rec.AcceptWaveform(data):
+                        partial = json.loads(rec.Result())
+                        if partial.get("text"):
+                            results.append(partial["text"])
 
-                result = json.loads(rec.FinalResult())
-                text: str = result.get("text", "")
+                final = json.loads(rec.FinalResult())
+                if final.get("text"):
+                    results.append(final["text"])
+
+                text = " ".join(results)
                 elapsed = time.monotonic() - start
 
                 logger.info(
