@@ -90,6 +90,11 @@ def _ordered_manifests(limit: int) -> list[dict[str, Any]]:
     return list(reversed(manifests))[:limit]
 
 
+def _history_limit() -> int:
+    storage_cfg = current_app.config["APP_CONFIG"]["storage"]
+    return int(storage_cfg["max_history"])
+
+
 def _error_response(message: str, status_code: int) -> tuple[Response, int]:
     return jsonify({"error": message}), status_code
 
@@ -116,7 +121,7 @@ def list_recent_history() -> tuple[Response, int]:
 @history_bp.route("/api/history", methods=["GET"])
 def list_history() -> tuple[Response, int]:
     try:
-        return jsonify({"items": [_history_item_dto(item) for item in _ordered_manifests(limit=5)]}), 200
+        return jsonify({"items": [_history_item_dto(item) for item in _ordered_manifests(limit=_history_limit())]}), 200
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to list history: error=%s", str(exc))
         return _error_response("failed to load history", 500)

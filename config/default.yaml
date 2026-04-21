@@ -22,7 +22,7 @@ models:
 storage:
   history_dir: "data/history"
   recordings_dir: "data/recordings"
-  max_history: 5
+  max_history: 7
   max_recordings: 5
 
 api:

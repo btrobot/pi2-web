@@ -16,22 +16,40 @@ from app.mode_registry import get_mode_definition
 logger = logging.getLogger(__name__)
 
 _ARTIFACT_KINDS = ("input_text", "output_text", "input_audio", "output_audio")
+_ARTIFACT_SUFFIXES = {
+    "input_text": ".txt",
+    "output_text": ".txt",
+    "input_audio": ".wav",
+    "output_audio": ".wav",
+}
 
 
 class HistoryManager:
     """Persist conversion history as `record_{id}/manifest.json` groups."""
 
-    def __init__(self, history_dir: str, max_records: int = 5) -> None:
+    def __init__(self, history_dir: str, max_records: int = 7) -> None:
         self._dir = Path(history_dir).expanduser().resolve()
         self._dir.mkdir(parents=True, exist_ok=True)
         self._index_path = self._dir / "index.json"
         self._max = max_records
+        for artifact_kind in _ARTIFACT_KINDS:
+            self._artifact_dir(artifact_kind).mkdir(parents=True, exist_ok=True)
+        self._sync_archive_folders()
 
     def _record_dir(self, record_id: int) -> Path:
         return self._dir / f"record_{record_id:03d}"
 
     def _manifest_path(self, record_id: int) -> Path:
         return self._record_dir(record_id) / "manifest.json"
+
+    def _artifact_dir(self, artifact_kind: str) -> Path:
+        if artifact_kind not in _ARTIFACT_SUFFIXES:
+            raise ValueError(f"unsupported artifact kind: {artifact_kind}")
+        return self._dir / artifact_kind
+
+    def _archive_artifact_path(self, record_id: int, artifact_kind: str) -> Path:
+        suffix = _ARTIFACT_SUFFIXES[artifact_kind]
+        return self._artifact_dir(artifact_kind) / f"record_{record_id:03d}_{artifact_kind}{suffix}"
 
     def _load_index(self) -> list[dict[str, Any]]:
         if not self._index_path.exists():
@@ -231,8 +249,10 @@ class HistoryManager:
         while len(items) > self._max:
             oldest = items.pop(0)
             self._delete_record_dir(oldest["id"])
+            self._delete_record_archive_files(oldest["id"])
 
         self._save_index(items)
+        self._sync_archive_folders()
         logger.info("saved history record: id=%d, mode_key=%s", record_id, resolved_mode_key)
         return self._enrich_record(manifest)
 
@@ -245,6 +265,36 @@ class HistoryManager:
         record_dir = self._record_dir(record_id)
         if record_dir.exists():
             shutil.rmtree(record_dir)
+
+    def _delete_record_archive_files(self, record_id: int) -> None:
+        for artifact_kind in _ARTIFACT_KINDS:
+            archive_path = self._archive_artifact_path(record_id, artifact_kind)
+            if archive_path.exists():
+                archive_path.unlink()
+
+    def _sync_archive_folders(self) -> None:
+        retained_archive_paths: set[Path] = set()
+        for artifact_kind in _ARTIFACT_KINDS:
+            self._artifact_dir(artifact_kind).mkdir(parents=True, exist_ok=True)
+
+        for item in self._load_index():
+            record_id = item["id"]
+            artifacts = item.get("artifacts", {})
+            for artifact_kind in _ARTIFACT_KINDS:
+                file_name = artifacts.get(artifact_kind)
+                if not file_name:
+                    continue
+                source_path = self._record_dir(record_id) / file_name
+                if not source_path.exists():
+                    continue
+                archive_path = self._archive_artifact_path(record_id, artifact_kind)
+                shutil.copy2(source_path, archive_path)
+                retained_archive_paths.add(archive_path)
+
+        for artifact_kind in _ARTIFACT_KINDS:
+            for path in self._artifact_dir(artifact_kind).glob("*"):
+                if path.is_file() and path not in retained_archive_paths:
+                    path.unlink()
 
     def list_records(self) -> list[dict[str, Any]]:
         return [self._enrich_record(item) for item in self._load_index()]
@@ -294,11 +344,14 @@ class HistoryManager:
             return False
 
         self._delete_record_dir(record_id)
+        self._delete_record_archive_files(record_id)
         self._save_index(remaining)
+        self._sync_archive_folders()
         logger.info("deleted history record: id=%d", record_id)
         return True
 
     def export_all(self) -> io.BytesIO:
+        self._sync_archive_folders()
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
             if self._index_path.exists():
@@ -306,13 +359,9 @@ class HistoryManager:
             else:
                 archive.writestr("index.json", json.dumps({"items": [], "max_records": self._max}, ensure_ascii=False, indent=2))
 
-            for item in self._load_index():
-                record_dir = self._record_dir(item["id"])
-                if not record_dir.exists():
-                    continue
-                for path in sorted(record_dir.rglob("*")):
-                    if path.is_file():
-                        archive.write(path, path.relative_to(self._dir).as_posix())
+            for path in sorted(self._dir.rglob("*")):
+                if path.is_file() and path != self._index_path:
+                    archive.write(path, path.relative_to(self._dir).as_posix())
         buf.seek(0)
         return buf
 

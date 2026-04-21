@@ -38,7 +38,7 @@ class TestHistoryManager:
 
     @pytest.fixture
     def manager(self, history_dir: Path) -> HistoryManager:
-        return HistoryManager(str(history_dir), max_records=5)
+        return HistoryManager(str(history_dir), max_records=7)
 
     def test_add_record_creates_manifest_directory(self, manager: HistoryManager, history_dir: Path) -> None:
         record = manager.add_record(
@@ -114,6 +114,12 @@ class TestHistoryManager:
         assert s2s_manifest["artifacts"]["input_text"] == "input_text.txt"
         assert s2s_manifest["artifacts"]["output_text"] == "output_text.txt"
         assert s2s_manifest["values"]["output_text"] == "Hello"
+        assert (history_dir / "input_audio" / "record_001_input_audio.wav").exists()
+        assert (history_dir / "input_audio" / "record_002_input_audio.wav").exists()
+        assert (history_dir / "output_audio" / "record_002_output_audio.wav").exists()
+        assert (history_dir / "input_text" / "record_002_input_text.txt").exists()
+        assert (history_dir / "output_text" / "record_001_output_text.txt").exists()
+        assert (history_dir / "output_text" / "record_002_output_text.txt").exists()
 
     def test_list_and_get_records_return_enriched_manifest_shape(self, manager: HistoryManager) -> None:
         manager.add_record(
@@ -170,6 +176,8 @@ class TestHistoryManager:
             )
 
         assert not (history_dir / "record_001").exists()
+        assert not (history_dir / "input_text" / "record_001_input_text.txt").exists()
+        assert not (history_dir / "output_audio" / "record_001_output_audio.wav").exists()
         assert [item["id"] for item in manager.list_records()] == [2, 3]
 
     def test_get_artifact_path_and_get_audio_path_resolve_frozen_artifacts(
@@ -212,6 +220,8 @@ class TestHistoryManager:
         assert deleted is True
         assert manager.get_record(1) is None
         assert not (history_dir / "record_001").exists()
+        assert not (history_dir / "input_text" / "record_001_input_text.txt").exists()
+        assert not (history_dir / "output_text" / "record_001_output_text.txt").exists()
         index = json.loads((history_dir / "index.json").read_text(encoding="utf-8"))
         assert index["items"] == []
 
@@ -247,6 +257,10 @@ class TestHistoryManager:
         assert "record_001/input_audio.wav" in names
         assert "record_001/output_audio.wav" in names
         assert "record_001/output_text.txt" in names
+        assert "input_text/record_001_input_text.txt" in names
+        assert "output_text/record_001_output_text.txt" in names
+        assert "input_audio/record_001_input_audio.wav" in names
+        assert "output_audio/record_001_output_audio.wav" in names
 
 
 class TestRecordingManager:

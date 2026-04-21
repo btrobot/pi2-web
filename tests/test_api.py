@@ -2012,7 +2012,7 @@ def test_recent_history_returns_latest_three_summary_items(client, mock_config, 
 
 
 
-def test_history_returns_latest_five_full_items(client, mock_config, tmp_audio_file):
+def test_history_returns_latest_seven_full_items(client, mock_config, tmp_audio_file):
     manager = _history_manager(mock_config)
     mode_keys = [
         "tts_zh_zh",
@@ -2021,6 +2021,8 @@ def test_history_returns_latest_five_full_items(client, mock_config, tmp_audio_f
         "mt_tts_zh_en",
         "asr_mt_en_zh",
         "asr_mt_tts_zh_en",
+        "mt_en_zh",
+        "tts_en_en",
     ]
     for index, mode_key in enumerate(mode_keys, start=1):
         _seed_history_record(manager, mode_key, index, str(tmp_audio_file))
@@ -2030,7 +2032,7 @@ def test_history_returns_latest_five_full_items(client, mock_config, tmp_audio_f
     assert resp.status_code == 200
     data = resp.get_json()
     assert list(data.keys()) == ["items"]
-    assert [item["id"] for item in data["items"]] == [6, 5, 4, 3, 2]
+    assert [item["id"] for item in data["items"]] == [8, 7, 6, 5, 4, 3, 2]
     first = data["items"][0]
     assert set(first.keys()) == {
         "id",
@@ -2043,21 +2045,21 @@ def test_history_returns_latest_five_full_items(client, mock_config, tmp_audio_f
         "artifacts",
         "artifact_urls",
     }
-    assert first["mode_key"] == "asr_mt_tts_zh_en"
-    assert first["values"]["source_text"] == "source-6-asr_mt_tts_zh_en"
-    assert first["values"]["output_text"] == "output-6-asr_mt_tts_zh_en"
+    assert first["mode_key"] == "tts_en_en"
+    assert first["values"]["source_text"] == "source-8-tts_en_en"
+    assert first["values"]["output_text"] is None
     assert first["artifacts"] == {
         "input_text": "input_text.txt",
-        "output_text": "output_text.txt",
-        "input_audio": "input_audio.wav",
+        "output_text": None,
+        "input_audio": None,
         "output_audio": "output_audio.wav",
     }
     assert first["artifact_urls"] == {
-        "input_text_url": "/api/history/6/artifacts/input_text",
-        "output_text_url": "/api/history/6/artifacts/output_text",
-        "input_audio_url": "/api/history/6/artifacts/input_audio",
-        "output_audio_url": "/api/history/6/artifacts/output_audio",
-        "manifest_url": "/api/history/6/artifacts/manifest",
+        "input_text_url": "/api/history/8/artifacts/input_text",
+        "output_text_url": None,
+        "input_audio_url": None,
+        "output_audio_url": "/api/history/8/artifacts/output_audio",
+        "manifest_url": "/api/history/8/artifacts/manifest",
     }
 
 
@@ -2118,6 +2120,10 @@ def test_export_history_returns_frozen_zip_structure(client, mock_config, tmp_au
     assert "record_001/input_audio.wav" in names
     assert "record_001/output_audio.wav" in names
     assert "record_001/output_text.txt" in names
+    assert "input_text/record_001_input_text.txt" in names
+    assert "output_text/record_001_output_text.txt" in names
+    assert "input_audio/record_001_input_audio.wav" in names
+    assert "output_audio/record_001_output_audio.wav" in names
 
 
 # ---------------------------------------------------------------------------
@@ -2299,7 +2305,7 @@ def test_get_recording_audio_serves_files_when_storage_config_uses_relative_path
         "storage": {
             "history_dir": "data/history",
             "recordings_dir": "data/recordings",
-            "max_history": 5,
+            "max_history": 7,
             "max_recordings": 5,
         },
         "api": {

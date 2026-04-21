@@ -72,7 +72,7 @@ def mock_config(tmp_storage_dir: Path) -> dict:
         "storage": {
             "history_dir": str(tmp_storage_dir / "history"),
             "recordings_dir": str(tmp_storage_dir / "recordings"),
-            "max_history": 5,
+            "max_history": 7,
             "max_recordings": 5,
         },
         "api": {
