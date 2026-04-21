@@ -30,6 +30,39 @@ class _DirectSentenceBoundaryDetector:
         return [text]
 
 
+def _iter_package_translations(translation: object) -> Iterable[object]:
+    """Yield underlying Argos package translations through cache/composite wrappers."""
+
+    visited: set[int] = set()
+    stack = [translation]
+
+    while stack:
+        current = stack.pop()
+        if current is None:
+            continue
+
+        marker = id(current)
+        if marker in visited:
+            continue
+        visited.add(marker)
+
+        if getattr(current, "pkg", None) is not None:
+            yield current
+            continue
+
+        underlying = getattr(current, "underlying", None)
+        if underlying is not None:
+            stack.append(underlying)
+
+        t1 = getattr(current, "t1", None)
+        if t1 is not None:
+            stack.append(t1)
+
+        t2 = getattr(current, "t2", None)
+        if t2 is not None:
+            stack.append(t2)
+
+
 def _requires_external_sentence_tokenizer(source_lang: str, target_lang: str) -> bool:
     """Return whether a translation pair should keep the external sentence tokenizer path."""
 
@@ -42,11 +75,11 @@ def _configure_translation_runtime_strategy(*, translation: object, source_lang:
     if _requires_external_sentence_tokenizer(source_lang, target_lang):
         return
 
-    pkg = getattr(translation, "pkg", None)
-    if pkg is None:
-        return
-
-    translation.sentencizer = _DirectSentenceBoundaryDetector(pkg)
+    for package_translation in _iter_package_translations(translation):
+        pkg = getattr(package_translation, "pkg", None)
+        if pkg is None:
+            continue
+        package_translation.sentencizer = _DirectSentenceBoundaryDetector(pkg)
 
 
 def configure_argos_environment(package_dir: str | Path | None) -> Path | None:
@@ -135,28 +168,29 @@ def _validate_stanza_dependency(
     if not _requires_external_sentence_tokenizer(source_lang, target_lang):
         return None
 
-    pkg = getattr(translation, "pkg", None)
-    packaged_sbd_path = getattr(pkg, "packaged_sbd_path", None)
-    if pkg is None or packaged_sbd_path is None or "stanza" not in str(packaged_sbd_path):
-        return None
+    for package_translation in _iter_package_translations(translation):
+        pkg = getattr(package_translation, "pkg", None)
+        packaged_sbd_path = getattr(pkg, "packaged_sbd_path", None)
+        if pkg is None or packaged_sbd_path is None or "stanza" not in str(packaged_sbd_path):
+            continue
 
-    try:
-        stanza = importlib.import_module("stanza")
-        pipeline_core = importlib.import_module("stanza.pipeline.core")
-        stanza_lang_code = STANZA_LANGUAGE_CODE_MAPPING.get(pkg.from_code, pkg.from_code)
+        try:
+            stanza = importlib.import_module("stanza")
+            pipeline_core = importlib.import_module("stanza.pipeline.core")
+            stanza_lang_code = STANZA_LANGUAGE_CODE_MAPPING.get(pkg.from_code, pkg.from_code)
 
-        pipeline_kwargs = {
-            "lang": stanza_lang_code,
-            "dir": str(pkg.package_path / "stanza"),
-            "processors": "tokenize",
-            "logging_level": "WARNING",
-        }
-        if not allow_network:
-            pipeline_kwargs["download_method"] = pipeline_core.DownloadMethod.NONE
+            pipeline_kwargs = {
+                "lang": stanza_lang_code,
+                "dir": str(pkg.package_path / "stanza"),
+                "processors": "tokenize",
+                "logging_level": "WARNING",
+            }
+            if not allow_network:
+                pipeline_kwargs["download_method"] = pipeline_core.DownloadMethod.NONE
 
-        stanza.Pipeline(**pipeline_kwargs)
-    except Exception as exc:  # noqa: BLE001 - convert readiness issues into a stable diagnostic
-        return f"MT sentence tokenizer unavailable for {source_lang}->{target_lang}: {exc}"
+            stanza.Pipeline(**pipeline_kwargs)
+        except Exception as exc:  # noqa: BLE001 - convert readiness issues into a stable diagnostic
+            return f"MT sentence tokenizer unavailable for {source_lang}->{target_lang}: {exc}"
 
     return None
 
@@ -170,25 +204,26 @@ def _prepare_stanza_dependency(
     if not _requires_external_sentence_tokenizer(source_lang, target_lang):
         return None
 
-    pkg = getattr(translation, "pkg", None)
-    packaged_sbd_path = getattr(pkg, "packaged_sbd_path", None)
-    if pkg is None or packaged_sbd_path is None or "stanza" not in str(packaged_sbd_path):
-        return None
+    for package_translation in _iter_package_translations(translation):
+        pkg = getattr(package_translation, "pkg", None)
+        packaged_sbd_path = getattr(pkg, "packaged_sbd_path", None)
+        if pkg is None or packaged_sbd_path is None or "stanza" not in str(packaged_sbd_path):
+            continue
 
-    try:
-        stanza = importlib.import_module("stanza")
-        stanza_lang_code = STANZA_LANGUAGE_CODE_MAPPING.get(pkg.from_code, pkg.from_code)
-        stanza_dir = Path(pkg.package_path) / "stanza"
-        stanza_dir.mkdir(parents=True, exist_ok=True)
-        stanza.download(
-            lang=stanza_lang_code,
-            model_dir=str(stanza_dir),
-            processors="tokenize",
-            logging_level="WARNING",
-            verbose=False,
-        )
-    except Exception as exc:  # noqa: BLE001 - convert preparation issues into a stable diagnostic
-        return f"MT sentence tokenizer preparation failed for {source_lang}->{target_lang}: {exc}"
+        try:
+            stanza = importlib.import_module("stanza")
+            stanza_lang_code = STANZA_LANGUAGE_CODE_MAPPING.get(pkg.from_code, pkg.from_code)
+            stanza_dir = Path(pkg.package_path) / "stanza"
+            stanza_dir.mkdir(parents=True, exist_ok=True)
+            stanza.download(
+                lang=stanza_lang_code,
+                model_dir=str(stanza_dir),
+                processors="tokenize",
+                logging_level="WARNING",
+                verbose=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - convert preparation issues into a stable diagnostic
+            return f"MT sentence tokenizer preparation failed for {source_lang}->{target_lang}: {exc}"
 
     return None
 

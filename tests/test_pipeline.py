@@ -734,12 +734,16 @@ def test_mt_engine_uses_direct_argos_sentencizer_for_en_to_zh():
             return self._translation if other.code == "zh" else None
 
     original_sentencizer = MagicMock()
-    translation = types.SimpleNamespace(
+    package_translation = types.SimpleNamespace(
         pkg=types.SimpleNamespace(package_path=Path("models/data/argos/translate-en_zh")),
         sentencizer=original_sentencizer,
         translate=MagicMock(return_value="你好"),
     )
-    fake_languages = [_FakeLanguage("en", translation), _FakeLanguage("zh")]
+    cached_translation = types.SimpleNamespace(
+        underlying=package_translation,
+        translate=package_translation.translate,
+    )
+    fake_languages = [_FakeLanguage("en", cached_translation), _FakeLanguage("zh")]
     translate_module = types.SimpleNamespace(get_installed_languages=lambda: fake_languages)
 
     with patch.object(MTEngine, "_get_translate_module", return_value=translate_module), \
@@ -748,11 +752,56 @@ def test_mt_engine_uses_direct_argos_sentencizer_for_en_to_zh():
         result = MTEngine().translate("hello world", "en", "zh")
 
     assert result == "你好"
-    assert translation.sentencizer is not original_sentencizer
-    assert translation.sentencizer.split_sentences("hello world") == ["hello world"]
+    assert package_translation.sentencizer is not original_sentencizer
+    assert package_translation.sentencizer.split_sentences("hello world") == ["hello world"]
     mock_validate.assert_called_once_with(
-        translation=translation,
+        translation=cached_translation,
         source_lang="en",
         target_lang="zh",
         allow_network=False,
     )
+
+
+def test_validate_mt_runtime_handles_cached_translation_wrappers(tmp_path):
+    from models.mt import validate_mt_runtime
+
+    class _FakeLanguage:
+        def __init__(self, code: str, translation: object | None = None) -> None:
+            self.code = code
+            self._translation = translation
+
+        def get_translation(self, other) -> object | None:  # noqa: ANN001
+            return self._translation if other.code == "en" else None
+
+    package_path = tmp_path / "translate-zh_en"
+    (package_path / "model").mkdir(parents=True)
+    package_translation = types.SimpleNamespace(
+        pkg=types.SimpleNamespace(
+            package_path=package_path,
+            packaged_sbd_path=package_path / "stanza",
+            from_code="zh",
+        )
+    )
+    cached_translation = types.SimpleNamespace(underlying=package_translation)
+    fake_languages = [_FakeLanguage("zh", cached_translation), _FakeLanguage("en")]
+    translate_module = types.SimpleNamespace(get_installed_languages=lambda: fake_languages)
+    settings_module = types.SimpleNamespace(package_data_dir=None, package_dirs=[])
+    stanza_module = types.SimpleNamespace(Pipeline=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("tokenizer missing")))
+    pipeline_core_module = types.SimpleNamespace(DownloadMethod=types.SimpleNamespace(NONE="none"))
+    real_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package=None):
+        if name == "argostranslate.translate":
+            return translate_module
+        if name == "argostranslate.settings":
+            return settings_module
+        if name == "stanza":
+            return stanza_module
+        if name == "stanza.pipeline.core":
+            return pipeline_core_module
+        return real_import_module(name, package)
+
+    with patch("models.mt.importlib.import_module", side_effect=_fake_import_module):
+        issues = validate_mt_runtime(package_dir=tmp_path, allow_network=False, required_pairs=[("zh", "en")])
+
+    assert issues == ["MT sentence tokenizer unavailable for zh->en: tokenizer missing"]
