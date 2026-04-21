@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import time
 from typing import Any
@@ -9,27 +10,55 @@ from typing import Any
 from app.mode_registry import ModeDefinition, get_mode_definition
 from pipeline._utils import build_base_result
 from pipeline.operations import capture_audio, recognize_audio, synthesize_text, translate_text
-from pipeline.speech_mt_preprocess import prepare_speech_mt_text
+from pipeline.speech_mt_chunking import (
+    assemble_speech_mt_output,
+    guard_repeated_tail_translation,
+    inspect_speech_mt_chunking,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _should_preprocess_speech_mt(mode: ModeDefinition) -> bool:
-    """Return whether the composite speech->MT seam is eligible for preprocessing."""
+@dataclass(frozen=True)
+class SpeechMtTranslationPlan:
+    """Internal scaffold for future segmented speech->MT translation."""
+
+    source_text: str
+    mt_inputs: tuple[str, ...]
+    planned_mt_inputs: tuple[str, ...] = ()
+    source_atomic_units: tuple[str, ...] = ()
+
+
+def _should_segment_speech_mt(mode: ModeDefinition) -> bool:
+    """Return whether the ASR cross-language chain should use the speech->MT seam."""
 
     return (
         mode.pipeline_chain[0] == "asr"
         and "mt" in mode.pipeline_chain
-        and mode.source_lang == "zh"
-        and mode.target_lang == "en"
+        and mode.source_lang in {"zh", "en"}
+        and mode.target_lang in {"zh", "en"}
+        and mode.source_lang != mode.target_lang
     )
 
 
-def _prepare_text_for_speech_mt(text: str, mode: ModeDefinition) -> str:
-    """Apply the scoped zh->en speech preprocess behind the composite seam."""
+def _build_segmented_speech_mt_plan(text: str, mode: ModeDefinition) -> SpeechMtTranslationPlan:
+    """Build the future segmented-translation plan.
 
-    _ = mode
-    return prepare_speech_mt_text(text)
+    PR2 computes deterministic atomic-unit chunk planning while preserving the
+    current single-shot runtime input until PR3 rolls out chunk-by-chunk MT.
+    """
+
+    inspection = inspect_speech_mt_chunking(
+        text,
+        source_lang=mode.source_lang,
+        target_lang=mode.target_lang,
+    )
+    return SpeechMtTranslationPlan(
+        source_text=text,
+        mt_inputs=(inspection.single_shot_mt_input,),
+        planned_mt_inputs=inspection.packed_chunks,
+        source_atomic_units=inspection.atomic_units,
+    )
 
 
 def run_composite_mode(
@@ -56,13 +85,39 @@ def run_composite_mode(
 
         current_text = source_text
         if "mt" in mode.pipeline_chain:
-            if _should_preprocess_speech_mt(mode):
-                current_text = _prepare_text_for_speech_mt(current_text, mode)
-            current_text = translate_text(
-                text=current_text,
-                source_lang=mode.source_lang,
-                target_lang=mode.target_lang,
-            )
+            mt_input = current_text
+            if _should_segment_speech_mt(mode):
+                translation_plan = _build_segmented_speech_mt_plan(current_text, mode)
+                planned_mt_inputs = translation_plan.planned_mt_inputs or translation_plan.mt_inputs
+                if len(planned_mt_inputs) <= 1:
+                    mt_input = translation_plan.mt_inputs[0]
+                    current_text = translate_text(
+                        text=mt_input,
+                        source_lang=mode.source_lang,
+                        target_lang=mode.target_lang,
+                    )
+                else:
+                    translated_chunks = [
+                        translate_text(
+                            text=chunk,
+                            source_lang=mode.source_lang,
+                            target_lang=mode.target_lang,
+                        )
+                        for chunk in planned_mt_inputs
+                    ]
+                    current_text = assemble_speech_mt_output(translated_chunks, target_lang=mode.target_lang)
+                    current_text = guard_repeated_tail_translation(
+                        current_text,
+                        target_lang=mode.target_lang,
+                        source_atomic_units=translation_plan.source_atomic_units,
+                        source_packed_chunks=planned_mt_inputs,
+                    )
+            else:
+                current_text = translate_text(
+                    text=mt_input,
+                    source_lang=mode.source_lang,
+                    target_lang=mode.target_lang,
+                )
             result["output_text"] = current_text
         elif mode.output_type == "text":
             result["output_text"] = current_text

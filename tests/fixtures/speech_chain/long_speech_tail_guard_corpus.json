@@ -1,0 +1,38 @@
+{
+  "trim_cases": [
+    {
+      "id": "trim_spaced_tail_loop",
+      "target_lang": "en",
+      "assembled_text": "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 and on and on and on and on",
+      "source_atomic_units": ["alpha.", "beta.", "gamma."],
+      "source_packed_chunks": ["alpha beta gamma", "delta epsilon zeta"],
+      "expected_output": "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 and on"
+    },
+    {
+      "id": "trim_dense_tail_loop",
+      "target_lang": "zh",
+      "assembled_text": "这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果继续测试继续测试继续测试",
+      "source_atomic_units": ["第一句。", "第二句。", "第三句。"],
+      "source_packed_chunks": ["第一句。 第二句。", "第三句。 第四句。"],
+      "expected_output": "这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果继续测试"
+    }
+  ],
+  "preserve_cases": [
+    {
+      "id": "preserve_when_source_atomic_units_repeat",
+      "target_lang": "en",
+      "assembled_text": "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 again now again now again now",
+      "source_atomic_units": ["重复。", "重复。", "重复。"],
+      "source_packed_chunks": ["chunk-a", "chunk-b"],
+      "expected_output": "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 again now again now again now"
+    },
+    {
+      "id": "preserve_when_source_chunks_repeat",
+      "target_lang": "zh",
+      "assembled_text": "这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果继续测试继续测试继续测试",
+      "source_atomic_units": ["第一句。", "第二句。", "第三句。"],
+      "source_packed_chunks": ["重复片段", "重复片段", "重复片段"],
+      "expected_output": "这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果这是一个很长的翻译结果继续测试继续测试继续测试"
+    }
+  ]
+}
