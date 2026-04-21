@@ -782,8 +782,8 @@ def test_index_recordings_view_contract_exposes_start_finish_and_back_controls(c
         r"inputPanelCaption\.textContent = getMessage\(isRecordingsView \? 'recordings\.panel_caption' : 'panel\.input_caption'\);.*?"
         r"speechRecordButton\.textContent = isRecordingsView \? getMessage\('recordings\.start'\) : getMessage\('speech\.record_start'\);.*?"
         r"speechStopButton\.textContent = isRecordingsView \? getMessage\('recordings\.finish'\) : getMessage\('speech\.record_stop'\);.*?"
-        r"speechRecordButton\.hidden = isRecordingsView \? pi5RecordingActive : false;.*?"
-        r"speechStopButton\.hidden = isRecordingsView \? !pi5RecordingActive : false;.*?"
+        r"speechRecordButton\.hidden = false;.*?"
+        r"speechStopButton\.hidden = false;.*?"
         r"recordingsBackButton\.hidden = !isRecordingsView;",
         script,
         flags=re.S,

@@ -1898,8 +1898,8 @@
       const pi5RecordingActive = isPi5RecordingActive();
       speechRecordButton.textContent = isRecordingsView ? getMessage('recordings.start') : getMessage('speech.record_start');
       speechStopButton.textContent = isRecordingsView ? getMessage('recordings.finish') : getMessage('speech.record_stop');
-      speechRecordButton.hidden = isRecordingsView ? pi5RecordingActive : false;
-      speechStopButton.hidden = isRecordingsView ? !pi5RecordingActive : false;
+      speechRecordButton.hidden = false;
+      speechStopButton.hidden = false;
       speechRecordButton.disabled = !isSpeechSurface || pi5RecordingActive || state.isSubmitting;
       speechStopButton.disabled = !isSpeechSurface || !pi5RecordingActive || state.isSubmitting;
       speechClearButton.hidden = isRecordingsView;
