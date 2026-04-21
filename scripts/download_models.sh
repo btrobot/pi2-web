@@ -87,15 +87,22 @@ echo "[检查] 预热 Argos 离线分句依赖..."
 python3 - <<'PY'
 import os
 
-from models.mt import validate_mt_runtime
+from models.mt import prepare_mt_runtime, validate_mt_runtime
+
+issues = prepare_mt_runtime(
+    package_dir=os.environ["ARGOS_PACKAGES_DIR"],
+)
+if issues:
+    raise SystemExit("[error] failed to prepare Argos offline sentence tokenizers:\n- " + "\n- ".join(issues))
 
 issues = validate_mt_runtime(
     package_dir=os.environ["ARGOS_PACKAGES_DIR"],
-    allow_network=True,
+    allow_network=False,
 )
 if issues:
-    raise SystemExit("[错误] Argos 离线依赖准备失败:\n- " + "\n- ".join(issues))
-print("[完成] Argos 离线分句依赖已就绪")
+    raise SystemExit("[error] failed to verify Argos offline MT runtime:\n- " + "\n- ".join(issues))
+
+print("[done] Argos offline sentence tokenizers are ready")
 PY
 
 PIPER_ZH_ONNX="${PIPER_DIR}/zh_CN-huayan-medium.onnx"

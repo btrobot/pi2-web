@@ -20,17 +20,48 @@ class TranslationError(Exception):
     """Machine translation engine failure."""
 
 
+class _DirectSentenceBoundaryDetector:
+    """Minimal sentencizer for direct Argos translation paths."""
+
+    def __init__(self, pkg: object) -> None:
+        self.pkg = pkg
+
+    def split_sentences(self, text: str) -> list[str]:
+        return [text]
+
+
+def _requires_external_sentence_tokenizer(source_lang: str, target_lang: str) -> bool:
+    """Return whether a translation pair should keep the external sentence tokenizer path."""
+
+    return (source_lang, target_lang) == ("zh", "en")
+
+
+def _configure_translation_runtime_strategy(*, translation: object, source_lang: str, target_lang: str) -> None:
+    """Apply pair-specific runtime behavior to an Argos translation object."""
+
+    if _requires_external_sentence_tokenizer(source_lang, target_lang):
+        return
+
+    pkg = getattr(translation, "pkg", None)
+    if pkg is None:
+        return
+
+    translation.sentencizer = _DirectSentenceBoundaryDetector(pkg)
+
+
 def configure_argos_environment(package_dir: str | Path | None) -> Path | None:
     """Point Argos Translate at the configured package directory before import."""
 
     if package_dir is None:
         _refresh_argos_runtime(_discover_argos_package_dirs(None))
+        _patch_argos_stanza_sentencizer()
         return None
 
     resolved_dir = Path(package_dir).expanduser().resolve()
     resolved_dir.mkdir(parents=True, exist_ok=True)
     os.environ["ARGOS_PACKAGES_DIR"] = str(resolved_dir)
     _refresh_argos_runtime(_discover_argos_package_dirs(resolved_dir))
+    _patch_argos_stanza_sentencizer()
     return resolved_dir
 
 
@@ -101,6 +132,9 @@ def _validate_stanza_dependency(
     target_lang: str,
     allow_network: bool,
 ) -> str | None:
+    if not _requires_external_sentence_tokenizer(source_lang, target_lang):
+        return None
+
     pkg = getattr(translation, "pkg", None)
     packaged_sbd_path = getattr(pkg, "packaged_sbd_path", None)
     if pkg is None or packaged_sbd_path is None or "stanza" not in str(packaged_sbd_path):
@@ -122,9 +156,120 @@ def _validate_stanza_dependency(
 
         stanza.Pipeline(**pipeline_kwargs)
     except Exception as exc:  # noqa: BLE001 - convert readiness issues into a stable diagnostic
-        return f"MT sentence tokenizer unavailable for {source_lang}→{target_lang}: {exc}"
+        return f"MT sentence tokenizer unavailable for {source_lang}->{target_lang}: {exc}"
 
     return None
+
+
+def _prepare_stanza_dependency(
+    *,
+    translation: object,
+    source_lang: str,
+    target_lang: str,
+) -> str | None:
+    if not _requires_external_sentence_tokenizer(source_lang, target_lang):
+        return None
+
+    pkg = getattr(translation, "pkg", None)
+    packaged_sbd_path = getattr(pkg, "packaged_sbd_path", None)
+    if pkg is None or packaged_sbd_path is None or "stanza" not in str(packaged_sbd_path):
+        return None
+
+    try:
+        stanza = importlib.import_module("stanza")
+        stanza_lang_code = STANZA_LANGUAGE_CODE_MAPPING.get(pkg.from_code, pkg.from_code)
+        stanza_dir = Path(pkg.package_path) / "stanza"
+        stanza_dir.mkdir(parents=True, exist_ok=True)
+        stanza.download(
+            lang=stanza_lang_code,
+            model_dir=str(stanza_dir),
+            processors="tokenize",
+            logging_level="WARNING",
+            verbose=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - convert preparation issues into a stable diagnostic
+        return f"MT sentence tokenizer preparation failed for {source_lang}->{target_lang}: {exc}"
+
+    return None
+
+
+def prepare_mt_runtime(
+    *,
+    package_dir: str | Path | None,
+    required_pairs: Iterable[tuple[str, str]] = SUPPORTED_PAIRS,
+) -> list[str]:
+    """Download/prepare MT sentence tokenizer resources into the local package dirs."""
+
+    configure_argos_environment(package_dir)
+    searched_dirs = describe_argos_package_dirs(package_dir)
+
+    try:
+        translate_module = importlib.import_module("argostranslate.translate")
+    except ModuleNotFoundError:
+        return [
+            "translation engine unavailable: argostranslate is not installed in the active Python environment"
+        ]
+
+    try:
+        languages = {lang.code: lang for lang in translate_module.get_installed_languages()}
+    except Exception as exc:  # noqa: BLE001 - diagnostics should stay actionable
+        return [f"MT runtime preparation failed while enumerating installed languages: {exc}"]
+
+    issues: list[str] = []
+    for source_lang, target_lang in required_pairs:
+        source = languages.get(source_lang)
+        if source is None:
+            issues.append(f"MT package missing source language: {source_lang} (searched: {searched_dirs})")
+            continue
+
+        target = languages.get(target_lang)
+        if target is None:
+            issues.append(f"MT package missing target language: {target_lang} (searched: {searched_dirs})")
+            continue
+
+        translation = source.get_translation(target)
+        if translation is None:
+            issues.append(
+                f"MT package missing translation pair: {source_lang}->{target_lang} (searched: {searched_dirs})"
+            )
+            continue
+
+        stanza_issue = _prepare_stanza_dependency(
+            translation=translation,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+        if stanza_issue is not None:
+            issues.append(stanza_issue)
+
+    return issues
+
+
+def _patch_argos_stanza_sentencizer() -> None:
+    try:
+        sbd_module = importlib.import_module("argostranslate.sbd")
+        pipeline_core = importlib.import_module("stanza.pipeline.core")
+    except ModuleNotFoundError:
+        return
+
+    sentencizer_cls = getattr(sbd_module, "StanzaSentencizer", None)
+    if sentencizer_cls is None or getattr(sentencizer_cls, "_pi5_offline_patch_applied", False):
+        return
+
+    def _offline_lazy_pipeline(self):  # noqa: ANN001 - preserves upstream method shape
+        if self.stanza_pipeline is None:
+            self.stanza_pipeline = sbd_module.stanza.Pipeline(
+                lang=self.stanza_lang_code,
+                dir=str(self.pkg.package_path / "stanza"),
+                processors="tokenize",
+                use_gpu=sbd_module.settings.device == "cuda",
+                logging_level="WARNING",
+                download_method=pipeline_core.DownloadMethod.NONE,
+            )
+        return self.stanza_pipeline
+
+    sentencizer_cls.lazy_pipeline = _offline_lazy_pipeline
+    sentencizer_cls._pi5_offline_patch_applied = True
 
 
 def validate_mt_runtime(
@@ -165,7 +310,7 @@ def validate_mt_runtime(
         translation = source.get_translation(target)
         if translation is None:
             issues.append(
-                f"MT package missing translation pair: {source_lang}→{target_lang} (searched: {searched_dirs})"
+                f"MT package missing translation pair: {source_lang}->{target_lang} (searched: {searched_dirs})"
             )
             continue
 
@@ -173,7 +318,7 @@ def validate_mt_runtime(
         model_path = getattr(pkg, "package_path", None)
         if model_path is not None and not (Path(model_path) / "model").exists():
             issues.append(
-                f"MT model directory missing for {source_lang}→{target_lang}: {Path(model_path) / 'model'}"
+                f"MT model directory missing for {source_lang}->{target_lang}: {Path(model_path) / 'model'}"
             )
             continue
 
@@ -200,6 +345,7 @@ class MTEngine:
         if self._translate_module is None:
             try:
                 self._translate_module = importlib.import_module("argostranslate.translate")
+                _patch_argos_stanza_sentencizer()
             except ModuleNotFoundError as exc:
                 logger.error("Argos Translate dependency is missing: error=%s", str(exc))
                 raise TranslationError(
@@ -213,7 +359,7 @@ class MTEngine:
             return
 
         if pair not in SUPPORTED_PAIRS:
-            raise TranslationError(f"unsupported language pair: {source_lang} → {target_lang}")
+            raise TranslationError(f"unsupported language pair: {source_lang} -> {target_lang}")
 
         logger.info("加载翻译模型: %s → %s", source_lang, target_lang)
         try:
@@ -233,8 +379,23 @@ class MTEngine:
             translation = langs[source_lang].get_translation(langs[target_lang])
             if translation is None:
                 raise TranslationError(
-                    f"translation package not found: {source_lang} → {target_lang} (searched: {searched_dirs})"
+                    f"translation package not found: {source_lang} -> {target_lang} (searched: {searched_dirs})"
                 )
+
+            _configure_translation_runtime_strategy(
+                translation=translation,
+                source_lang=source_lang,
+                target_lang=target_lang,
+            )
+
+            stanza_issue = _validate_stanza_dependency(
+                translation=translation,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                allow_network=False,
+            )
+            if stanza_issue is not None:
+                raise TranslationError(stanza_issue)
 
             self._translations[pair] = translation
             logger.info("翻译模型加载完成: %s → %s", source_lang, target_lang)
@@ -248,7 +409,7 @@ class MTEngine:
                 target_lang,
                 str(exc),
             )
-            raise TranslationError(f"failed to load translation model: {source_lang} → {target_lang}") from exc
+            raise TranslationError(f"failed to load translation model: {source_lang} -> {target_lang}") from exc
 
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
         """Translate text from source_lang to target_lang."""
@@ -275,7 +436,7 @@ class MTEngine:
             raise
         except Exception as exc:
             logger.error("翻译失败: %s → %s, error=%s", source_lang, target_lang, str(exc))
-            raise TranslationError(f"translation failed: {source_lang} → {target_lang}") from exc
+            raise TranslationError(f"translation failed: {source_lang} -> {target_lang}") from exc
 
         elapsed = time.monotonic() - start
         logger.info(
