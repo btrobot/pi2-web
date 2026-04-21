@@ -6,6 +6,8 @@ audio:
   bit_depth: 16
   channels: 1
   max_record_duration: 180   # 录音上限 (秒)
+  playback_device: "plughw:3,0"  # 播放设备，默认与录音设备相同
+  record_device: "plughw:3,0"    # 录音设备，默认与音频设备相同
 
 models:
   asr:

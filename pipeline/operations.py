@@ -22,9 +22,11 @@ def capture_audio(
 
     audio_cfg = config["audio"]
     target_path = output_path or make_output_path(config["storage"], prefix)
+    # 优先使用 record_device，如果不存在则使用 device
+    device = audio_cfg.get("record_device", audio_cfg.get("device", "default"))
     return record(
         output_path=target_path,
-        device=audio_cfg["device"],
+        device=device,
         stop_flag=stop_flag,
         max_duration=max_duration or audio_cfg["max_record_duration"],
     )
@@ -74,7 +76,9 @@ def synthesize_text(
     )
     engine.synthesize(text, lang, output_path)
     if playback:
-        play(wav_path=output_path, device=audio_cfg["device"])
+        # 优先使用 playback_device，如果不存在则使用 device
+        device = audio_cfg.get("playback_device", audio_cfg.get("device", "default"))
+        play(wav_path=output_path, device=device)
     return output_path
 
 __all__ = ["capture_audio", "recognize_audio", "synthesize_text", "translate_text"]

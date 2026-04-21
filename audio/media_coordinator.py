@@ -41,8 +41,12 @@ class Pi5MediaCoordinator:
 
     def __init__(self, *, config: dict[str, Any]) -> None:
         storage_cfg = config["storage"]
+        audio_cfg = config["audio"]
         self._config = config
-        self._device = config["audio"]["device"]
+        # 支持独立的录音和播放设备配置
+        self._device = audio_cfg.get("device", audio_cfg.get("record_device", "default"))
+        self._playback_device = audio_cfg.get("playback_device", self._device)
+        self._record_device = audio_cfg.get("record_device", self._device)
         self._recordings_dir = Path(storage_cfg["recordings_dir"])
         self._recordings_dir.mkdir(parents=True, exist_ok=True)
         self._recording_manager = RecordingManager(
@@ -88,7 +92,7 @@ class Pi5MediaCoordinator:
                 raise MediaBusyError(busy_message)
 
             try:
-                proc = play_wav(wav_path=wav_path, device=self._device, blocking=False)
+                proc = play_wav(wav_path=wav_path, device=self._playback_device, blocking=False)
             except AudioPlaybackError as exc:
                 self._playback_error = str(exc)
                 raise MediaCoordinatorError(str(exc)) from exc
@@ -105,7 +109,7 @@ class Pi5MediaCoordinator:
                 "history_id": history_id,
                 "audio_url": audio_url,
                 "wav_path": wav_path,
-                "device": self._device,
+                "device": self._playback_device,
                 "started_at": _utc_now_iso(),
                 "pid": proc.pid,
             }
@@ -163,7 +167,7 @@ class Pi5MediaCoordinator:
             self._recording_stop_event = stop_event
             self._recording_info = {
                 "started_at": _utc_now_iso(),
-                "device": self._device,
+                "device": self._record_device,
                 "max_duration_seconds": int(self._config["audio"]["max_record_duration"]),
                 "temp_wav_path": temp_path,
             }
@@ -332,6 +336,8 @@ class Pi5MediaCoordinator:
         return {
             "status": status,
             "device": self._device,
+            "playback_device": self._playback_device,
+            "record_device": self._record_device,
             "active_kind": active_kind,
             "playback": playback,
             "recording": recording_info,

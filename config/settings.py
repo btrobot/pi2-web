@@ -15,6 +15,8 @@ _CONFIG_PATH = Path(__file__).parent / "default.yaml"
 # 格式: "ENV_VAR_NAME": ("section", "key")
 _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "PI5_AUDIO_DEVICE": ("audio", "device"),
+    "PI5_AUDIO_PLAYBACK_DEVICE": ("audio", "playback_device"),
+    "PI5_AUDIO_RECORD_DEVICE": ("audio", "record_device"),
     "PI5_AUDIO_SAMPLE_RATE": ("audio", "sample_rate"),
     "PI5_AUDIO_MAX_RECORD_DURATION": ("audio", "max_record_duration"),
     "PI5_API_HOST": ("api", "host"),
