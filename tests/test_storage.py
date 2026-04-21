@@ -288,6 +288,60 @@ class TestRecordingManager:
         assert record["timestamp"] == record["created_at"]
         assert record["filename"] == record["file_name"]
 
+    def test_list_recordings_hides_speech_input_captures_from_standalone_archive(
+        self,
+        manager: RecordingManager,
+        wav_file: Path,
+    ) -> None:
+        standalone = manager.save_recording(str(wav_file), category="standalone")
+        speech_input = manager.save_recording(str(wav_file), category="speech_input")
+
+        standalone_items = manager.list_recordings()
+        all_items = manager.list_recordings(category=None)
+
+        assert [item["id"] for item in standalone_items] == [standalone["id"]]
+        assert [item["id"] for item in all_items] == [standalone["id"], speech_input["id"]]
+        assert all(item["category"] == "standalone" for item in standalone_items)
+        assert manager.get_audio_path(speech_input["id"]) is not None
+
+    def test_load_meta_repairs_history_shaped_items_out_of_recording_archive(self, recordings_dir: Path) -> None:
+        metadata_path = recordings_dir / "metadata.json"
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "items": [
+                        {
+                            "id": 1,
+                            "created_at": "2026-04-21T10:00:00",
+                            "duration_seconds": 1.0,
+                            "file_name": "recording_001.wav",
+                            "file_size_bytes": 32,
+                        },
+                        {
+                            "id": 99,
+                            "mode_key": "mt_zh_en",
+                            "group_key": "cross_text_to_text",
+                            "created_at": "2026-04-21T10:01:00",
+                            "artifacts": {},
+                            "values": {},
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        make_wav(recordings_dir / "recording_001.wav")
+
+        manager = RecordingManager(str(recordings_dir), max_recordings=5)
+
+        items = manager.list_recordings()
+        repaired = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        assert [item["id"] for item in items] == [1]
+        assert [item["id"] for item in repaired["items"]] == [1]
+
     def test_fifo_eviction_removes_oldest_recording_file(
         self,
         recordings_dir: Path,
@@ -299,6 +353,20 @@ class TestRecordingManager:
 
         assert [item["id"] for item in manager.list_recordings()] == [2, 3]
         assert not (recordings_dir / "recording_001.wav").exists()
+
+    def test_fifo_eviction_is_isolated_per_recording_category(
+        self,
+        recordings_dir: Path,
+        wav_file: Path,
+    ) -> None:
+        manager = RecordingManager(str(recordings_dir), max_recordings=2)
+        standalone = manager.save_recording(str(wav_file), category="standalone")
+        for _ in range(3):
+            manager.save_recording(str(wav_file), category="speech_input")
+
+        assert [item["id"] for item in manager.list_recordings()] == [standalone["id"]]
+        assert len(manager.list_recordings(category=None)) == 3
+        assert manager.get_audio_path(standalone["id"]) is not None
 
     def test_delete_recording_removes_file_and_metadata(
         self,
@@ -317,9 +385,10 @@ class TestRecordingManager:
         assert metadata["items"] == []
 
     def test_export_all_contains_metadata_and_recording_files(self, manager: RecordingManager, wav_file: Path) -> None:
-        manager.save_recording(str(wav_file))
+        manager.save_recording(str(wav_file), category="standalone")
+        manager.save_recording(str(wav_file), category="speech_input")
 
-        exported = manager.export_all()
+        exported = manager.export_all(category="standalone")
 
         assert isinstance(exported, io.BytesIO)
         assert zipfile.is_zipfile(exported)
@@ -328,6 +397,7 @@ class TestRecordingManager:
 
         assert "metadata.json" in names
         assert "recording_001.wav" in names
+        assert "recording_002.wav" not in names
 
     def test_missing_recording_raises_file_not_found(self, manager: RecordingManager) -> None:
         with pytest.raises(FileNotFoundError):

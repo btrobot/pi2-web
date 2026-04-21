@@ -22,6 +22,7 @@ _STOP_TIMEOUT_SECONDS = 2
 _RECORD_JOIN_TIMEOUT_SECONDS = 5
 _PLAYBACK_SETTLE_SECONDS = 0.35
 _RECORD_START_RESPONSE_GRACE_SECONDS = 0.05
+_DEFAULT_RECORDING_CATEGORY = "standalone"
 
 
 class MediaCoordinatorError(Exception):
@@ -142,7 +143,7 @@ class Pi5MediaCoordinator:
         self._terminate_process(proc)
         return self.get_state()
 
-    def start_recording(self) -> dict[str, Any]:
+    def start_recording(self, *, category: str = _DEFAULT_RECORDING_CATEGORY) -> dict[str, Any]:
         temp_path = self._create_temp_recording_path()
         stop_event = threading.Event()
 
@@ -170,6 +171,7 @@ class Pi5MediaCoordinator:
                 "device": self._record_device,
                 "max_duration_seconds": int(self._config["audio"]["max_record_duration"]),
                 "temp_wav_path": temp_path,
+                "category": category,
             }
             self._recording_result_path = None
             self._recording_error = None
@@ -218,7 +220,8 @@ class Pi5MediaCoordinator:
                 raise MediaCoordinatorError("Pi5 recording did not produce audio")
 
         try:
-            recording = self._recording_manager.save_recording(result_path)
+            recording_category = self._recording_info.get("category", _DEFAULT_RECORDING_CATEGORY) if self._recording_info else _DEFAULT_RECORDING_CATEGORY
+            recording = self._recording_manager.save_recording(result_path, category=recording_category)
         except Exception as exc:  # noqa: BLE001 - surface save failure via coordinator
             raise MediaCoordinatorError(f"failed to save Pi5 recording: {exc}") from exc
         finally:
@@ -312,7 +315,7 @@ class Pi5MediaCoordinator:
             recording_info = {
                 key: value
                 for key, value in self._recording_info.items()
-                if key != "temp_wav_path"
+                if key not in {"temp_wav_path", "category"}
             }
             recording_info["pending_save"] = self._recording_result_path is not None
 

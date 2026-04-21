@@ -2369,7 +2369,13 @@
       try {
         const { response, payload } = await fetchJson('/api/pi5/recordings/start', {
           method: 'POST',
-          headers: { Accept: 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            scope: recordingsView ? 'recordings' : 'speech',
+          }),
         }, { timeoutMs: PI5_RECORD_START_TIMEOUT_MS });
         if (!response.ok) {
           if (payload.pi5_recording) {

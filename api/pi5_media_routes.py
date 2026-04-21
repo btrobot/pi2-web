@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, current_app, jsonify
+from flask import Blueprint, Response, current_app, jsonify, request
 
 from audio.media_coordinator import MediaBusyError, MediaCoordinatorError, Pi5MediaCoordinator
 from api.recording_contracts import recording_item_dto
@@ -40,6 +40,14 @@ def _recording_stop_error_status(message: str) -> int:
     return 409 if message == "Pi5 recording is not active" else 500
 
 
+def _recording_category_from_request() -> str:
+    payload = request.get_json(silent=True) or {}
+    scope = payload.get("scope")
+    if scope is None:
+        scope = request.form.get("scope")
+    return "speech_input" if scope == "speech" else "standalone"
+
+
 @pi5_media_bp.route("/api/pi5/media/state", methods=["GET"])
 def get_pi5_media_state() -> tuple[Response, int]:
     return _state_response("media")
@@ -60,7 +68,7 @@ def get_pi5_recording_state() -> tuple[Response, int]:
 def start_pi5_recording() -> tuple[Response, int]:
     coordinator = _get_coordinator()
     try:
-        state = coordinator.start_recording()
+        state = coordinator.start_recording(category=_recording_category_from_request())
     except MediaBusyError as exc:
         return _state_response(
             "recording",

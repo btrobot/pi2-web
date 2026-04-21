@@ -47,7 +47,7 @@ def create_recording() -> tuple[Response, int]:
         except AudioIngressError as exc:
             return _error_response(str(exc), 400)
 
-        recording = _get_manager().save_recording(temp_path)
+        recording = _get_manager().save_recording(temp_path, category="standalone")
         return jsonify({"recording": recording_item_dto(recording)}), 200
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to create recording: error=%s", str(exc))
@@ -63,7 +63,7 @@ def create_recording() -> tuple[Response, int]:
 @recording_bp.route("/api/recordings", methods=["GET"])
 def list_recordings() -> tuple[Response, int]:
     try:
-        recordings = list(reversed(_get_manager().list_recordings()))[:5]
+        recordings = list(reversed(_get_manager().list_recordings(category="standalone")))[:5]
         return jsonify({"items": [recording_item_dto(item) for item in recordings]}), 200
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to list recordings: error=%s", str(exc))
@@ -86,7 +86,7 @@ def get_recording_audio(recording_id: int) -> Response:
 @recording_bp.route("/api/recordings/<int:recording_id>", methods=["DELETE"])
 def delete_recording(recording_id: int) -> tuple[Response, int]:
     try:
-        deleted = _get_manager().delete_recording(recording_id)
+        deleted = _get_manager().delete_recording(recording_id, category="standalone")
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to delete recording: id=%d, error=%s", recording_id, str(exc))
         return _error_response("failed to delete recording", 500)
@@ -100,7 +100,7 @@ def delete_recording(recording_id: int) -> tuple[Response, int]:
 @recording_bp.route("/api/recordings/export", methods=["GET"])
 def export_recordings() -> Response:
     try:
-        buf = _get_manager().export_contract()
+        buf = _get_manager().export_contract(category="standalone")
     except Exception as exc:  # noqa: BLE001 - route must surface JSON error
         logger.error("failed to export recordings: error=%s", str(exc))
         return _error_response("failed to export recordings", 500)

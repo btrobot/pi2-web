@@ -24,6 +24,7 @@ from storage.recordings import RecordingManager
 class _StubPi5MediaCoordinator:
     def __init__(self) -> None:
         self.start_calls: list[dict[str, object]] = []
+        self.recording_start_calls: list[str] = []
         self.start_error: Exception | None = None
         self.recording_start_error: Exception | None = None
         self.recording_stop_error: Exception | None = None
@@ -80,7 +81,8 @@ class _StubPi5MediaCoordinator:
         }
         return self.get_state()
 
-    def start_recording(self) -> dict[str, object]:
+    def start_recording(self, *, category: str = "standalone") -> dict[str, object]:
+        self.recording_start_calls.append(category)
         if self.recording_start_error is not None:
             raise self.recording_start_error
         self.state_payload = {
@@ -224,6 +226,28 @@ def test_real_pi5_media_coordinator_persists_recording_on_stop(mock_config, tmp_
         "recording": None,
         "error": None,
     }
+
+
+def test_real_pi5_media_coordinator_keeps_speech_input_captures_out_of_standalone_recordings(
+    mock_config,
+    tmp_audio_file,
+):
+    coordinator = Pi5MediaCoordinator(config=mock_config)
+
+    def _fake_capture_audio(*, config, prefix, stop_flag, output_path, max_duration):  # noqa: ARG001
+        Path(output_path).write_bytes(tmp_audio_file.read_bytes())
+        assert stop_flag is not None
+        stop_flag.wait(timeout=0.05)
+        return output_path
+
+    with patch("audio.media_coordinator.capture_audio", side_effect=_fake_capture_audio):
+        coordinator.start_recording(category="speech_input")
+        saved = coordinator.stop_recording()
+
+    manager = _recording_manager(mock_config)
+    assert manager.list_recordings() == []
+    assert [item["id"] for item in manager.list_recordings(category=None)] == [saved["id"]]
+    assert manager.get_audio_path(saved["id"]) is not None
 
 
 def test_real_pi5_media_coordinator_reports_recording_before_worker_runs(mock_config):
@@ -445,6 +469,8 @@ def test_pi5_recording_start_stop_and_state_routes_return_stable_payload(client,
             "error": None,
         },
     }
+    coordinator = app.extensions["pi5_media_coordinator"]
+    assert coordinator.recording_start_calls == ["standalone"]
 
 
 def test_pi5_recording_start_returns_busy_payload_when_playback_is_active(client, app):
@@ -1196,7 +1222,7 @@ def test_text_conversion_returns_frozen_record_and_result_dto(client, app, mode_
             "output_audio": "output_audio.wav" if mode.output_type == "audio" else None,
         },
         "values": {
-            "source_text": "你好",
+            "source_text": "??",
             "output_text": output_text,
         },
     }
@@ -1207,7 +1233,7 @@ def test_text_conversion_returns_frozen_record_and_result_dto(client, app, mode_
             "/api/conversions/text",
             json={
                 "mode_key": mode_key,
-                "input_text": "你好",
+                "input_text": "??",
                 "persist_input": True,
             },
         )
@@ -1230,17 +1256,26 @@ def test_text_conversion_returns_frozen_record_and_result_dto(client, app, mode_
         },
     }
     assert data["result"] == {
-        "source_text": "你好",
+        "source_text": "??",
         "output_text": manifest["values"]["output_text"],
         "output_audio_url": "/api/history/12/artifacts/output_audio" if mode.output_type == "audio" else None,
     }
     app.config["PIPELINE_FN"].assert_called_once_with(
         mode_key,
         app.config["APP_CONFIG"],
-        input_text="你好",
+        input_text="??",
         input_audio_path=None,
         playback=False,
     )
+
+
+def test_pi5_recording_start_uses_speech_scope_for_translation_capture(client, app):
+    coordinator = app.extensions["pi5_media_coordinator"]
+
+    resp = client.post("/api/pi5/recordings/start", json={"scope": "speech"})
+
+    assert resp.status_code == 200
+    assert coordinator.recording_start_calls == ["speech_input"]
 
 
 def test_text_conversion_triggers_pi5_playback_for_audio_output_modes(client, app, tmp_audio_file):
@@ -2129,6 +2164,25 @@ def test_list_recordings_returns_latest_five_frozen_items(client, mock_config, t
     assert all(set(item.keys()) == {"id", "created_at", "duration_seconds", "audio_url", "reuse"} for item in data["items"])
     assert data["items"][0]["audio_url"] == "/api/recordings/6/audio"
     assert data["items"][0]["reuse"] == {"recording_id": 6}
+
+
+def test_list_recordings_excludes_translation_scoped_captures_from_recordings_menu(client, mock_config, tmp_audio_file):
+    manager = _recording_manager(mock_config)
+    standalone = manager.save_recording(str(tmp_audio_file), category="standalone")
+    manager.save_recording(str(tmp_audio_file), category="speech_input")
+
+    resp = client.get("/api/recordings")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["items"] == [
+        {
+            "id": standalone["id"],
+            "created_at": standalone["created_at"],
+            "duration_seconds": standalone["duration_seconds"],
+            "audio_url": f"/api/recordings/{standalone['id']}/audio",
+            "reuse": {"recording_id": standalone["id"]},
+        }
+    ]
 
 
 
